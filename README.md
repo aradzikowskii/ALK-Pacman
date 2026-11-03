@@ -4,58 +4,62 @@
 
 ---
 
-## 🚀 Jak uruchomić grę
+## 🎮 Jak zagrać?
 
-Gra działa w całości w przeglądarce (HTML + CSS + JavaScript, dźwięk generowany przez Web Audio API). **Nie potrzebuje klucza API ani serwera z bazą danych** — wystarczy serwer, który poda pliki statyczne.
+### Dla graczy — wystarczy link
 
-> ⚠️ Nie otwieraj `index.html` podwójnym kliknięciem. Przeglądarka blokuje wtedy skrypty (`type="module"`) wczytywane z dysku (`file://`) i zobaczysz pustą stronę. Użyj jednej z metod poniżej.
+**Kliknij link do gry i graj.** To wszystko.
 
-### Opcja 1: Zagraj online przez GitHub Pages (bez instalowania czegokolwiek)
+👉 **Link do gry:** `https://<nazwa-autora>.github.io/<nazwa-projektu>/` *(autor wpisze tu prawdziwy link)*
 
-1. Wrzuć projekt do repozytorium na GitHubie (plik `index.html` musi być w głównym katalogu repozytorium).
-2. W repozytorium wejdź w **Settings → Pages**.
-3. W sekcji **Build and deployment** ustaw **Source: Deploy from a branch**, wybierz gałąź **main** i folder **/ (root)**, kliknij **Save**.
-4. Po 1–2 minutach gra będzie dostępna pod adresem:
-   `https://<twoja-nazwa-uzytkownika>.github.io/<nazwa-repozytorium>/`
-   (link pojawi się też na górze strony **Settings → Pages**).
+- ✅ **Nie potrzebujesz konta na GitHubie** — gra otwiera się jak zwykła strona internetowa.
+- ✅ **Niczego nie instalujesz** i niczego nie pobierasz.
+- ✅ Działa na **komputerze i na telefonie** (w przeglądarce Chrome, Edge, Firefox lub Safari).
+- ✅ Na telefonie na ekranie pojawią się przyciski do sterowania.
+- 💾 Twoje rekordy i ustawienia zapisują się tylko w Twojej przeglądarce.
 
-Po każdym nowym commicie na gałęzi `main` GitHub sam zaktualizuje grę.
+---
 
-### Opcja 2: Uruchom lokalnie z Node.js
+### Dla autora — jak udostępnić grę (robi się to raz)
 
-Wymagania: [Node.js](https://nodejs.org/) w wersji 22 LTS (lub 20.19+) oraz Git.
+Żeby gra miała swój link, trzeba ją raz „opublikować” na GitHubie. To darmowe.
+
+1. Wrzuć projekt na GitHuba jako **publiczne** repozytorium (w Google AI Studio służy do tego przycisk eksportu do GitHuba).
+2. Na stronie projektu na GitHubie kliknij zakładkę **Settings** (Ustawienia).
+3. Po lewej stronie kliknij **Pages**.
+4. W polu **Source** wybierz **Deploy from a branch**.
+5. W polu **Branch** wybierz **main**, obok zostaw **/ (root)** i kliknij **Save**.
+6. Odczekaj 1–2 minuty i odśwież stronę. Na górze pojawi się link do gry — **skopiuj go i wyślij znajomym** (i wpisz go wyżej w tym pliku).
+
+Gdy później zmienisz coś w grze na GitHubie, strona sama się zaktualizuje po minucie–dwóch.
+
+---
+
+### Dla chętnych — gra na własnym komputerze bez internetu
+
+To nie jest potrzebne do grania. Przydaje się tylko, jeśli chcesz zmieniać kod gry.
+
+> ⚠️ Samo otwarcie pliku `index.html` podwójnym kliknięciem **nie zadziała** (zobaczysz pustą stronę). Gra musi być uruchomiona przez mały „serwer”, jak niżej.
+
+**Sposób A — jeśli masz Pythona** (często jest już na komputerze):
+
+1. Pobierz projekt: na GitHubie zielony przycisk **Code → Download ZIP**, potem rozpakuj folder. *(Do pobrania ZIP-a z publicznego projektu konto nie jest potrzebne).*
+2. Otwórz w tym folderze terminal / wiersz poleceń i wpisz:
+   ```bash
+   python -m http.server 8000
+   ```
+   (jeśli nie działa, spróbuj `python3` zamiast `python`)
+3. Wejdź w przeglądarce na **http://localhost:8000**
+
+**Sposób B — dla programistów (Node.js 22 lub nowszy):**
 
 ```bash
-git clone https://github.com/<twoja-nazwa-uzytkownika>/<nazwa-repozytorium>.git
-cd <nazwa-repozytorium>
 npm install
 npm run dev
 ```
+Potem wejdź na **http://localhost:3000**.
 
-Następnie otwórz w przeglądarce **http://localhost:3000**.
-
-Wersja produkcyjna (zoptymalizowane pliki w folderze `dist/`):
-
-```bash
-npm run build
-npm run preview
-```
-
-### Opcja 3: Uruchom lokalnie bez Node.js (Python)
-
-Jeśli masz zainstalowanego Pythona 3, w folderze z grą wpisz:
-
-```bash
-python -m http.server 8000
-```
-
-i otwórz **http://localhost:8000**. (Na niektórych systemach zamiast `python` trzeba wpisać `python3`).
-
-### Dobrze wiedzieć
-
-- Rekordy, odznaki, ustawienia i informacja o obejrzanym samouczku zapisują się w `localStorage` przeglądarki — każdy gracz ma własne, a wyczyszczenie danych strony je resetuje.
-- Plik `.env.example` pochodzi z szablonu Google AI Studio; gra z niego nie korzysta i nie trzeba tworzyć pliku `.env`.
-- Gra działa w aktualnych wersjach Chrome, Edge, Firefox i Safari, na komputerze i na telefonie (sterowanie dotykowe pojawia się automatycznie).
+*Gra nie potrzebuje żadnego klucza API ani pliku `.env` — plik `.env.example` to pozostałość po szablonie Google AI Studio.*
 
 ---
 
