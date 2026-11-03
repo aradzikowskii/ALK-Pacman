@@ -1,7 +1,5 @@
 # 🎓 Kozminski Escape: Polowanie na ECTS
 
----
-
 ## 🎮 Jak zagrać?
 
 ### Dla graczy — wystarczy link
