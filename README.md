@@ -1,5 +1,8 @@
 # 🎓 Kozminski Escape: Polowanie na ECTS
 
+🎮 **Zagraj teraz:** [https://kozmin-escape.ai.studio](https://kozmin-escape.ai.studio)  
+🔗 **Source:** [https://kozmin-escape.ai.studio](https://kozmin-escape.ai.studio)
+
 > Zaawansowana, retro-arcade gra przeglądarkowa 2D osadzona w realiach kampusu **Akademii Leona Koźmińskiego (ALK)** w Warszawie (ul. Jagiellońska 57/59).
 
 ---
@@ -10,9 +13,9 @@
 
 **Kliknij link do gry i graj.** To wszystko.
 
-👉 **Link do gry:** `https://kozmin-escape.ai.studio`
+👉 **Link do gry: [https://kozmin-escape.ai.studio](https://kozmin-escape.ai.studio)**
 
-- ✅ **Nie potrzebujesz konta na GitHubie** — gra otwiera się jak zwykła strona internetowa.
+- ✅ **Nie potrzebujesz żadnego konta** (ani GitHuba, ani Google) — gra otwiera się jak zwykła strona internetowa.
 - ✅ **Niczego nie instalujesz** i niczego nie pobierasz.
 - ✅ Działa na **komputerze i na telefonie** (w przeglądarce Chrome, Edge, Firefox lub Safari).
 - ✅ Na telefonie na ekranie pojawią się przyciski do sterowania.
