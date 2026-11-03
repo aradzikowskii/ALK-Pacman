@@ -10,28 +10,13 @@
 
 **Kliknij link do gry i graj.** To wszystko.
 
-👉 **Link do gry:** `https://<nazwa-autora>.github.io/<nazwa-projektu>/` *(autor wpisze tu prawdziwy link)*
+👉 **Link do gry:** `https://kozmin-escape.ai.studio`
 
 - ✅ **Nie potrzebujesz konta na GitHubie** — gra otwiera się jak zwykła strona internetowa.
 - ✅ **Niczego nie instalujesz** i niczego nie pobierasz.
 - ✅ Działa na **komputerze i na telefonie** (w przeglądarce Chrome, Edge, Firefox lub Safari).
 - ✅ Na telefonie na ekranie pojawią się przyciski do sterowania.
 - 💾 Twoje rekordy i ustawienia zapisują się tylko w Twojej przeglądarce.
-
----
-
-### Dla autora — jak udostępnić grę (robi się to raz)
-
-Żeby gra miała swój link, trzeba ją raz „opublikować” na GitHubie. To darmowe.
-
-1. Wrzuć projekt na GitHuba jako **publiczne** repozytorium (w Google AI Studio służy do tego przycisk eksportu do GitHuba).
-2. Na stronie projektu na GitHubie kliknij zakładkę **Settings** (Ustawienia).
-3. Po lewej stronie kliknij **Pages**.
-4. W polu **Source** wybierz **Deploy from a branch**.
-5. W polu **Branch** wybierz **main**, obok zostaw **/ (root)** i kliknij **Save**.
-6. Odczekaj 1–2 minuty i odśwież stronę. Na górze pojawi się link do gry — **skopiuj go i wyślij znajomym** (i wpisz go wyżej w tym pliku).
-
-Gdy później zmienisz coś w grze na GitHubie, strona sama się zaktualizuje po minucie–dwóch.
 
 ---
 
