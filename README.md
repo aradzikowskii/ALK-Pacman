@@ -4,6 +4,61 @@
 
 ---
 
+## 🚀 Jak uruchomić grę
+
+Gra działa w całości w przeglądarce (HTML + CSS + JavaScript, dźwięk generowany przez Web Audio API). **Nie potrzebuje klucza API ani serwera z bazą danych** — wystarczy serwer, który poda pliki statyczne.
+
+> ⚠️ Nie otwieraj `index.html` podwójnym kliknięciem. Przeglądarka blokuje wtedy skrypty (`type="module"`) wczytywane z dysku (`file://`) i zobaczysz pustą stronę. Użyj jednej z metod poniżej.
+
+### Opcja 1: Zagraj online przez GitHub Pages (bez instalowania czegokolwiek)
+
+1. Wrzuć projekt do repozytorium na GitHubie (plik `index.html` musi być w głównym katalogu repozytorium).
+2. W repozytorium wejdź w **Settings → Pages**.
+3. W sekcji **Build and deployment** ustaw **Source: Deploy from a branch**, wybierz gałąź **main** i folder **/ (root)**, kliknij **Save**.
+4. Po 1–2 minutach gra będzie dostępna pod adresem:
+   `https://<twoja-nazwa-uzytkownika>.github.io/<nazwa-repozytorium>/`
+   (link pojawi się też na górze strony **Settings → Pages**).
+
+Po każdym nowym commicie na gałęzi `main` GitHub sam zaktualizuje grę.
+
+### Opcja 2: Uruchom lokalnie z Node.js
+
+Wymagania: [Node.js](https://nodejs.org/) w wersji 22 LTS (lub 20.19+) oraz Git.
+
+```bash
+git clone https://github.com/<twoja-nazwa-uzytkownika>/<nazwa-repozytorium>.git
+cd <nazwa-repozytorium>
+npm install
+npm run dev
+```
+
+Następnie otwórz w przeglądarce **http://localhost:3000**.
+
+Wersja produkcyjna (zoptymalizowane pliki w folderze `dist/`):
+
+```bash
+npm run build
+npm run preview
+```
+
+### Opcja 3: Uruchom lokalnie bez Node.js (Python)
+
+Jeśli masz zainstalowanego Pythona 3, w folderze z grą wpisz:
+
+```bash
+python -m http.server 8000
+```
+
+i otwórz **http://localhost:8000**. (Na niektórych systemach zamiast `python` trzeba wpisać `python3`).
+
+### Dobrze wiedzieć
+
+- Rekordy, odznaki, ustawienia i informacja o obejrzanym samouczku zapisują się w `localStorage` przeglądarki — każdy gracz ma własne, a wyczyszczenie danych strony je resetuje.
+- Plik `.env.example` pochodzi z szablonu Google AI Studio; gra z niego nie korzysta i nie trzeba tworzyć pliku `.env`.
+- Gra działa w aktualnych wersjach Chrome, Edge, Firefox i Safari, na komputerze i na telefonie (sterowanie dotykowe pojawia się automatycznie).
+
+---
+
 ## 📖 Fabuła i Cel Gry (Lore ALK)
 
 Sesja na Koźmińskim osiągnęła punkt kulminacyjny. Gracz wciela się w studenta uciekającego korytarzami uczelni, aulami specjalnymi i przez zielone **Patio ALK** przed bezwzględnym **Egzaminatorem z czerwonym długopisem**, **Prowadzącym ćwiczenia** oraz **Panią z Dziekanatu**.
