@@ -2529,3 +2529,190 @@ details.collapsible-legend { overflow: visible; }
 @media (max-width: 480px) {
   .modal-enemies-header { background: rgba(0, 34, 68, 0.98) !important; }
 }
+
+
+/* === Pogoda na kampusie (Claude) === */
+.weather-panel {
+  background: rgba(0, 15, 30, 0.6);
+  border: 1px solid rgba(242, 169, 0, 0.3);
+  border-radius: 12px;
+  padding: 0.8rem 0.95rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.weather-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.weather-panel-icon {
+  font-size: 2.1rem;
+  line-height: 1;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 10px rgba(242, 169, 0, 0.35));
+}
+
+.weather-panel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.weather-panel-source {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.weather-panel-name {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.weather-panel-bonus {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--alk-navy-main);
+  background: linear-gradient(135deg, var(--alk-gold) 0%, var(--alk-gold-light) 100%);
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.weather-panel-bonus.is-neutral {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.weather-panel-effects {
+  list-style: none;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  line-height: 1.45;
+  background: rgba(0, 34, 68, 0.35);
+  border-left: 3px solid var(--alk-gold);
+  border-radius: 8px;
+}
+
+.weather-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.weather-chip {
+  background: rgba(0, 75, 135, 0.25);
+  border: 1px solid rgba(242, 169, 0, 0.35);
+  color: #cbd5e1;
+  padding: 0.32rem 0.7rem;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.weather-chip:hover {
+  border-color: var(--alk-gold);
+  color: #ffffff;
+}
+
+.weather-chip.active {
+  background: linear-gradient(135deg, var(--alk-gold) 0%, var(--alk-gold-light) 100%);
+  color: var(--alk-navy-main);
+  border-color: #ffffff;
+  box-shadow: 0 0 12px rgba(242, 169, 0, 0.4);
+}
+
+.weather-chip:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.setting-select {
+  flex: 0 0 230px;
+  min-width: 0;
+  background: rgba(0, 15, 30, 0.85);
+  color: #ffffff;
+  border: 1px solid rgba(242, 169, 0, 0.45);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.setting-select:focus-visible {
+  outline: 2px solid var(--alk-gold);
+  outline-offset: 2px;
+}
+
+.setting-select option {
+  background: #0a1128;
+  color: #ffffff;
+}
+
+@media (max-width: 560px) {
+  #modal-settings .setting-select { flex: 1 1 100%; }
+  .weather-panel-head { flex-wrap: wrap; }
+}
+
+.weather-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(2, 8, 23, 0.72);
+  border: 1px solid rgba(242, 169, 0, 0.4);
+  color: #e2e8f0;
+  font-size: clamp(0.58rem, 1.3vw, 0.76rem);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 40;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+
+/* HUD: wynik z premią pogodową mieści się w jednej linii (Claude) */
+#hud-score-val {
+  white-space: nowrap;
+}
+
+@media (min-width: 1120px) {
+  .hud-bar {
+    grid-template-columns: minmax(110px, 0.85fr) minmax(130px, 1.05fr) minmax(160px, 1.3fr) minmax(140px, 1.2fr) minmax(210px, 1.9fr) minmax(110px, 0.9fr);
+  }
+}
+
+/* Średnie ekrany: HUD w dwóch rzędach, żeby nic nie wychodziło poza kafelki */
+@media (min-width: 901px) and (max-width: 1119px) {
+  .hud-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+

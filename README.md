@@ -42,6 +42,8 @@ Potem wejdź na **http://localhost:3000**.
 
 *Gra nie potrzebuje żadnego klucza API ani pliku `.env` — plik `.env.example` to pozostałość po szablonie Google AI Studio.*
 
+*Pogoda na żywo potrzebuje internetu. Bez niego gra ustawi pochmurne niebo, a pogodę możesz wybrać ręcznie.*
+
 ---
 
 ## 📖 Fabuła i Cel Gry (Lore ALK)
@@ -105,6 +107,26 @@ Pierwsze zdarzenie następuje po 25 sekundach, a kolejne co 30–45 sekund (czas
 1. **Awaria prądu**: plansza spowita mrokiem, widoczny jedynie snop latarki o promieniu 110 px wokół studenta oraz groźne, czerwone oczy polujących wykładowców.
 2. **Przerwa między zajęciami**: 7 spacerujących studentów-NPC pojawia się w korytarzach; zderzenie spowalnia gracza o 50% na 1 sekundę.
 3. **Wejściówka**: przez 10 sekund wszystkie zebrane punkty ECTS (zwykłe i złote) liczą się **podwójnie**!
+
+---
+
+## 🌦️ Pogoda na kampusie (na żywo spod ALK)
+
+Gra sama sprawdza **aktualną pogodę w okolicach Akademii Leona Koźmińskiego** (ul. Jagiellońska 57/59, Warszawa) i przenosi ją na kampus. Dane pochodzą z bezpłatnego serwisu [Open-Meteo](https://open-meteo.com/) (bez klucza API) i odświeżają się co 15 minut. Pogoda ustala się na starcie każdej sesji i nie zmienia się w trakcie gry. Gdy w okolicach ALK wieje ponad 35 km/h (lub porywy przekraczają 60 km/h), pogoda na żywo zamienia się w **Wichurę**.
+
+Nie chcesz grać przy prawdziwej pogodzie? Na ekranie startowym (albo w ⚙️ Ustawieniach) wybierz ją ręcznie: **📡 Na żywo**, ☀️ Słońce, ☁️ Pochmurno, 🌧️ Deszcz, ⛈️ Burza, ❄️ Śnieg, 🌫️ Mgła lub 💨 Wichura. Wybór zapamiętuje się w przeglądarce.
+
+| Pogoda | Wpływ na rozgrywkę | Premia punktowa |
+|---|---|---|
+| ☀️ Słonecznie | Stamina odnawia się o 35% szybciej, ale wykładowcy są o 5% szybsi | — |
+| ☁️ Pochmurno | Klasyczne zasady, bez modyfikatorów | — |
+| 🌧️ Deszcz | Kałuże na korytarzach i Patio spowalniają każdego o 40% (wykładowców też); sprint zużywa o 15% więcej staminy; w salach jest sucho | ×1,15 |
+| ⛈️ Burza | Kałuże i pioruny: żółty krąg ostrzega 1,5 s przed uderzeniem, porażony wykładowca stoi 2,5 s, a student 1,2 s; częstsze awarie prądu | ×1,3 |
+| ❄️ Śnieg | Student −12% prędkości, wykładowcy −18%; sprint zużywa o 25% więcej staminy; ślady stóp na śniegu | ×1,2 |
+| 🌫️ Mgła | Widać tylko najbliższą okolicę; wykładowcy z daleka gonią miejsce, w którym student był chwilę temu | ×1,25 |
+| 💨 Wichura | Wiatr spycha studenta (przy pogodzie na żywo — z prawdziwego kierunku), co kilka sekund przychodzi mocniejszy podmuch; w salach nie wieje; wykładowcy idący pod wiatr zwalniają | ×1,15 |
+
+Premia mnoży punkty za każde zebrane ECTS i Złote ECTS, więc trudniejsza pogoda daje wyższy wynik w Hall of Fame. Deszcz, burza i wichura mają też własne dźwięki otoczenia.
 
 ---
 

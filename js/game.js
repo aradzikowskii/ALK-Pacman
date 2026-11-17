@@ -44,6 +44,1283 @@ const DEAN_QUOTES = [
   "„System USOS ma przerwę techniczną!”"
 ];
 
+// =========================================================================
+// SYSTEM POGODY: aktualna pogoda przy ALK (Open-Meteo, bez klucza API)
+// albo pogoda wybrana ręcznie. Każda pogoda zmienia zasady rozgrywki.
+// =========================================================================
+const ALK_COORDS = { lat: 52.2697, lon: 21.0297 }; // ul. Jagiellońska 57/59, Warszawa
+const WEATHER_API_URL =
+  `https://api.open-meteo.com/v1/forecast?latitude=${ALK_COORDS.lat}&longitude=${ALK_COORDS.lon}` +
+  '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day' +
+  '&timezone=Europe%2FWarsaw&wind_speed_unit=kmh';
+const WEATHER_CACHE_KEY = 'kozminski_weather_cache';
+const WEATHER_MODE_KEY = 'kozminski_weather_mode';
+const WEATHER_CACHE_MS = 15 * 60 * 1000; // odczyt pogody ważny 15 minut
+const FOG_SIGHT = 170; // w mgle wykładowcy widzą studenta tylko z bliska (px)
+
+const WEATHER_TYPES = {
+  sunny: {
+    id: 'sunny', icon: '☀️', nightIcon: '🌙', name: 'Słonecznie', nightName: 'Bezchmurna noc', chip: 'Słońce',
+    effects: [
+      '🔋 Stamina odnawia się o 35% szybciej',
+      '⚠️ Wykładowcy też są w formie: +5% prędkości'
+    ],
+    playerSpeed: 1, enemySpeed: 1.05, staminaDrain: 1, staminaRegen: 1.35, scoreMul: 1
+  },
+  cloudy: {
+    id: 'cloudy', icon: '☁️', name: 'Pochmurno', chip: 'Pochmurno',
+    effects: [
+      '⚖️ Zwykły dzień na kampusie: klasyczne zasady, bez modyfikatorów'
+    ],
+    playerSpeed: 1, enemySpeed: 1, staminaDrain: 1, staminaRegen: 1, scoreMul: 1
+  },
+  rain: {
+    id: 'rain', icon: '🌧️', name: 'Deszcz', chip: 'Deszcz',
+    effects: [
+      '💧 Kałuże na korytarzach i Patio: w kałuży każdy zwalnia o 40% (wykładowcy też!)',
+      '👟 Mokre buty: sprint zużywa o 15% więcej staminy',
+      '🏛️ W salach jest sucho'
+    ],
+    playerSpeed: 1, enemySpeed: 1, staminaDrain: 1.15, staminaRegen: 1, scoreMul: 1.15, puddles: 7
+  },
+  storm: {
+    id: 'storm', icon: '⛈️', name: 'Burza', chip: 'Burza',
+    effects: [
+      '⚡ Żółty krąg = za chwilę uderzy tam piorun: porażony wykładowca stoi 2,5 s, a Ty 1,2 s',
+      '🎯 Zwab wykładowcę pod piorun, a sam zdąż uciec!',
+      '💧 Kałuże spowalniają o 40% · 🔌 częstsze awarie prądu'
+    ],
+    playerSpeed: 1, enemySpeed: 1, staminaDrain: 1.15, staminaRegen: 1, scoreMul: 1.3, puddles: 8, lightning: true
+  },
+  snow: {
+    id: 'snow', icon: '❄️', name: 'Śnieg', chip: 'Śnieg',
+    effects: [
+      '❄️ Zaspy spowalniają: Ty −12%, wykładowcy −18%',
+      '🥶 Mróz: sprint zużywa o 25% więcej staminy',
+      '👣 Zostawiasz ślady na śniegu'
+    ],
+    playerSpeed: 0.88, enemySpeed: 0.82, staminaDrain: 1.25, staminaRegen: 1, scoreMul: 1.2, footprints: true
+  },
+  fog: {
+    id: 'fog', icon: '🌫️', name: 'Mgła', chip: 'Mgła',
+    effects: [
+      '🌫️ Widzisz tylko najbliższą okolicę',
+      '🕵️ Wykładowcy z daleka też Cię nie widzą: gonią miejsce, w którym byłeś chwilę temu'
+    ],
+    playerSpeed: 1, enemySpeed: 1, staminaDrain: 1, staminaRegen: 1, scoreMul: 1.25, fog: true
+  },
+  wind: {
+    id: 'wind', icon: '💨', name: 'Wichura', chip: 'Wichura',
+    effects: [
+      '💨 Wiatr spycha Cię w jedną stronę: z wiatrem biegniesz szybciej, pod wiatr wolniej',
+      '🌪️ Co kilka sekund mocniejszy podmuch · w salach nie wieje',
+      '🍂 Wykładowcy idący pod wiatr też zwalniają'
+    ],
+    playerSpeed: 1, enemySpeed: 1, staminaDrain: 1, staminaRegen: 1, scoreMul: 1.15, wind: true
+  }
+};
+const WEATHER_ORDER = ['sunny', 'cloudy', 'rain', 'storm', 'snow', 'fog', 'wind'];
+
+// Kody pogody WMO (Open-Meteo) → typ pogody w grze
+function weatherTypeFromCode(code, windKmh = 0, gustKmh = 0) {
+  let type = 'cloudy';
+  if (code === 0 || code === 1) type = 'sunny';
+  else if (code === 2 || code === 3) type = 'cloudy';
+  else if (code === 45 || code === 48) type = 'fog';
+  else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) type = 'rain';
+  else if ((code >= 71 && code <= 77) || code === 85 || code === 86) type = 'snow';
+  else if (code >= 95) type = 'storm';
+  if ((type === 'sunny' || type === 'cloudy') && (windKmh >= 35 || gustKmh >= 60)) type = 'wind';
+  return type;
+}
+
+function formatWeatherMul(mul) {
+  return `×${Number(mul).toLocaleString('pl-PL', { maximumFractionDigits: 2 })}`;
+}
+
+class WeatherSystem {
+  constructor(game) {
+    this.game = game;
+    this.mode = 'live'; // 'live' albo id pogody wybranej ręcznie
+    this.live = null; // ostatni odczyt pogody spod ALK
+    this.liveStatus = 'idle'; // 'idle' | 'loading' | 'ok' | 'stale' | 'error'
+    this.fetching = false;
+    this.type = 'cloudy';
+    this.isNight = false;
+    this.windAngle = 0; // kierunek, W KTÓRYM wieje wiatr (radiany, układ canvasu)
+    this.time = 0;
+
+    this.drops = [];
+    this.splashes = [];
+    this.flakes = [];
+    this.leaves = [];
+    this.streaks = [];
+    this.clouds = [];
+    this.fogBlobs = [];
+    this.puddles = [];
+    this.ripples = [];
+    this.footprints = [];
+    this.snowCover = [];
+    this.lightning = null;
+    this.lightningTimer = 6;
+    this.bolt = null;
+    this.boltTimer = 0;
+    this.flashTimer = 0;
+    this.gustTimer = 6;
+    this.gustActive = 0;
+    this.footDist = 0;
+    this.footSide = 1;
+    this.lastPlayerPos = null;
+    this.rippleTimer = 0;
+
+    this.ui = {};
+    this.ambience = null;
+
+    this.loadMode();
+    this.loadCache();
+    this.resolveType();
+    this.resetEffects();
+
+    // Dźwięk otoczenia (deszcz / wiatr) wycisza się automatycznie poza rozgrywką
+    this.ambienceInterval = setInterval(() => this.syncAmbience(), 200);
+    // Odświeżanie pogody na żywo co 5 minut (tylko poza rozgrywką)
+    this.refreshInterval = setInterval(() => {
+      if (this.mode === 'live' && !this.isInGame()) this.fetchLive();
+    }, 5 * 60 * 1000);
+  }
+
+  get def() {
+    return WEATHER_TYPES[this.type] || WEATHER_TYPES.cloudy;
+  }
+
+  isInGame() {
+    const s = this.game.state;
+    return s === 'PLAYING' || s === 'PAUSED' || s === 'COUNTDOWN';
+  }
+
+  // ---------------------------------------------------------------------
+  // Tryb pogody i pobieranie danych
+  // ---------------------------------------------------------------------
+  loadMode() {
+    try {
+      const saved = localStorage.getItem(WEATHER_MODE_KEY);
+      if (saved && (saved === 'live' || WEATHER_TYPES[saved])) this.mode = saved;
+    } catch {}
+  }
+
+  saveMode() {
+    try {
+      localStorage.setItem(WEATHER_MODE_KEY, this.mode);
+    } catch {}
+  }
+
+  setMode(mode) {
+    if (mode !== 'live' && !WEATHER_TYPES[mode]) return;
+    this.mode = mode;
+    this.saveMode();
+    this.resolveType();
+    this.resetEffects();
+    if (mode === 'live') this.fetchLive();
+    this.notify();
+    if (this.game.state !== 'PLAYING') this.game.render();
+  }
+
+  loadCache() {
+    try {
+      const raw = localStorage.getItem(WEATHER_CACHE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data && typeof data.code === 'number' && typeof data.fetchedAt === 'number') {
+        data.type = weatherTypeFromCode(data.code, data.wind, data.gust);
+        this.live = data;
+        this.liveStatus = Date.now() - data.fetchedAt < WEATHER_CACHE_MS ? 'ok' : 'stale';
+      }
+    } catch {}
+  }
+
+  async fetchLive(force = false) {
+    if (this.fetching) return;
+    if (!force && this.live && this.liveStatus === 'ok' && Date.now() - this.live.fetchedAt < WEATHER_CACHE_MS) return;
+    this.fetching = true;
+    if (!this.live) {
+      this.liveStatus = 'loading';
+      this.notify();
+    }
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = setTimeout(() => {
+      if (controller) controller.abort();
+    }, 7000);
+    try {
+      const resp = await fetch(WEATHER_API_URL, controller ? { signal: controller.signal } : undefined);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const c = json && json.current;
+      if (!c || typeof c.weather_code !== 'number') throw new Error('Brak danych pogodowych');
+      this.live = {
+        code: c.weather_code,
+        temp: Number(c.temperature_2m),
+        feels: Number(c.apparent_temperature),
+        wind: Number(c.wind_speed_10m) || 0,
+        gust: Number(c.wind_gusts_10m) || 0,
+        windDir: Number(c.wind_direction_10m) || 0,
+        isDay: c.is_day === 1,
+        time: typeof c.time === 'string' ? c.time : '',
+        fetchedAt: Date.now()
+      };
+      this.live.type = weatherTypeFromCode(this.live.code, this.live.wind, this.live.gust);
+      this.liveStatus = 'ok';
+      try {
+        localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(this.live));
+      } catch {}
+    } catch (err) {
+      this.liveStatus = this.live ? 'stale' : 'error';
+      console.warn('[Pogoda] Nie udało się pobrać pogody spod ALK:', err && err.message ? err.message : err);
+    } finally {
+      clearTimeout(timeout);
+      this.fetching = false;
+    }
+
+    // Pogoda nie zmienia się w trakcie trwającej sesji — nowa obowiązuje od następnej gry
+    if (this.mode === 'live' && !this.isInGame()) {
+      this.resolveType();
+      this.resetEffects();
+      this.game.render();
+    }
+    this.notify();
+  }
+
+  resolveType() {
+    if (this.mode === 'live') {
+      if (this.live && this.live.type) {
+        this.type = this.live.type;
+        this.isNight = !this.live.isDay;
+        // Open-Meteo podaje, SKĄD wieje wiatr (0° = z północy) — wiatr pcha w przeciwną stronę
+        const toRad = (((this.live.windDir || 0) + 180) % 360) * Math.PI / 180;
+        this.windAngle = Math.atan2(-Math.cos(toRad), Math.sin(toRad));
+      } else {
+        this.type = 'cloudy';
+        this.isNight = false;
+      }
+    } else {
+      this.type = this.mode;
+      this.isNight = false;
+      this.windAngle = Math.floor(Math.random() * 8) * (Math.PI / 4);
+    }
+  }
+
+  // Wywoływane przy starcie każdej gry (nowe kałuże, nowy kierunek wiatru itd.)
+  prepareForGame() {
+    this.resolveType();
+    this.resetEffects();
+    this.notify();
+  }
+
+  // Wywoływane po powrocie do menu
+  onMenu() {
+    this.resolveType();
+    this.resetEffects();
+    this.notify();
+    if (this.mode === 'live') this.fetchLive();
+  }
+
+  // ---------------------------------------------------------------------
+  // Przygotowanie efektów
+  // ---------------------------------------------------------------------
+  resetEffects() {
+    const W = CANVAS_WIDTH;
+    const H = CANVAS_HEIGHT;
+    const d = this.def;
+    this.time = 0;
+    this.drops = [];
+    this.splashes = [];
+    this.flakes = [];
+    this.leaves = [];
+    this.streaks = [];
+    this.ripples = [];
+    this.footprints = [];
+    this.lightning = null;
+    this.bolt = null;
+    this.boltTimer = 0;
+    this.flashTimer = 0;
+    this.lightningTimer = 5 + Math.random() * 3;
+    this.gustTimer = 5 + Math.random() * 3;
+    this.gustActive = 0;
+    this.footDist = 0;
+    this.lastPlayerPos = null;
+
+    if (this.type === 'rain' || this.type === 'storm') {
+      const n = this.type === 'storm' ? 300 : 210;
+      for (let i = 0; i < n; i++) this.drops.push(this.makeDrop(true));
+    }
+    if (this.type === 'snow') {
+      for (let i = 0; i < 160; i++) this.flakes.push(this.makeFlake(true));
+    }
+    if (this.type === 'wind') {
+      for (let i = 0; i < 34; i++) this.leaves.push(this.makeLeaf(true));
+      for (let i = 0; i < 16; i++) this.streaks.push(this.makeStreak(true));
+    }
+
+    this.clouds = [];
+    if (this.type === 'cloudy' || this.type === 'rain' || this.type === 'storm') {
+      for (let i = 0; i < 5; i++) {
+        this.clouds.push({ x: Math.random() * W, y: Math.random() * H, r: 100 + Math.random() * 90, speed: 7 + Math.random() * 8 });
+      }
+    }
+
+    this.fogBlobs = [];
+    if (this.type === 'fog') {
+      for (let i = 0; i < 10; i++) {
+        this.fogBlobs.push({ x: Math.random() * W, y: Math.random() * H, r: 70 + Math.random() * 90, speed: 6 + Math.random() * 9, phase: Math.random() * Math.PI * 2 });
+      }
+    }
+
+    this.puddles = d.puddles ? this.generatePuddles(d.puddles) : [];
+    this.snowCover = this.type === 'snow' ? this.generateSnowCover() : [];
+  }
+
+  makeDrop(randomY) {
+    return {
+      x: Math.random() * (CANVAS_WIDTH + 160) - 120,
+      y: randomY ? Math.random() * CANVAS_HEIGHT : -20 - Math.random() * 40,
+      len: 9 + Math.random() * 9,
+      speed: 520 + Math.random() * 280
+    };
+  }
+
+  makeFlake(randomY) {
+    return {
+      x: Math.random() * CANVAS_WIDTH,
+      y: randomY ? Math.random() * CANVAS_HEIGHT : -10,
+      r: 1 + Math.random() * 2.2,
+      speed: 22 + Math.random() * 38,
+      sway: Math.random() * Math.PI * 2
+    };
+  }
+
+  makeLeaf(randomPos) {
+    const colors = ['#d97706', '#b45309', '#facc15', '#a16207', '#f8fafc', '#e2e8f0'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    return {
+      ...this.spawnOnUpwindEdge(randomPos),
+      size: 3 + Math.random() * 3,
+      speed: 120 + Math.random() * 120,
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 8,
+      wobble: Math.random() * Math.PI * 2,
+      paper: color === '#f8fafc' || color === '#e2e8f0',
+      color
+    };
+  }
+
+  makeStreak(randomPos) {
+    return {
+      ...this.spawnOnUpwindEdge(randomPos),
+      len: 30 + Math.random() * 50,
+      speed: 380 + Math.random() * 220
+    };
+  }
+
+  // Punkt startowy po nawietrznej stronie planszy (albo losowy przy pierwszym rozmieszczeniu)
+  spawnOnUpwindEdge(randomPos) {
+    if (randomPos) return { x: Math.random() * CANVAS_WIDTH, y: Math.random() * CANVAS_HEIGHT };
+    const cx = Math.cos(this.windAngle);
+    const cy = Math.sin(this.windAngle);
+    if (Math.abs(cx) > Math.abs(cy)) {
+      return { x: cx > 0 ? -20 : CANVAS_WIDTH + 20, y: Math.random() * CANVAS_HEIGHT };
+    }
+    return { x: Math.random() * CANVAS_WIDTH, y: cy > 0 ? -20 : CANVAS_HEIGHT + 20 };
+  }
+
+  isInsideRoom(x, y, margin = 0) {
+    const rooms = this.game.rooms || [];
+    return rooms.some(r => x > r.x - margin && x < r.x + r.w + margin && y > r.y - margin && y < r.y + r.h + margin);
+  }
+
+  generatePuddles(count) {
+    const g = this.game;
+    const result = [];
+    let attempts = 0;
+    while (result.length < count && attempts < 500) {
+      attempts++;
+      const r = 20 + Math.random() * 13;
+      const x = 40 + Math.random() * (CANVAS_WIDTH - 80);
+      const y = 40 + Math.random() * (CANVAS_HEIGHT - 80);
+      if (g.checkWallCollision(x, y, r + 6)) continue;
+      if (this.isInsideRoom(x, y, 8)) continue; // w salach jest sucho
+      if (Math.hypot(x - 90, y - 270) < 65 || Math.hypot(x - 710, y - 270) < 50) continue; // nie na starcie
+      if ((g.bushes || []).some(b => Math.hypot(x - b.x, y - b.y) < r + b.radius + 6)) continue;
+      if (result.some(p => Math.hypot(x - p.x, y - p.y) < r + p.r + 26)) continue;
+      result.push({ x, y, r, ry: r * 0.62, seed: Math.random() * 10 });
+    }
+    return result;
+  }
+
+  generateSnowCover() {
+    const patches = [];
+    for (let i = 0; i < 70; i++) {
+      const x = 24 + Math.random() * (CANVAS_WIDTH - 48);
+      const y = 24 + Math.random() * (CANVAS_HEIGHT - 48);
+      if (this.isInsideRoom(x, y, 4)) continue;
+      patches.push({ x, y, r: 10 + Math.random() * 26, a: 0.06 + Math.random() * 0.1 });
+    }
+    return patches;
+  }
+
+  inPuddle(x, y) {
+    for (const p of this.puddles) {
+      const nx = (x - p.x) / p.r;
+      const ny = (y - p.y) / p.ry;
+      if (nx * nx + ny * ny <= 1) return true;
+    }
+    return false;
+  }
+
+  // ---------------------------------------------------------------------
+  // Modyfikatory rozgrywki
+  // ---------------------------------------------------------------------
+  playerSpeedMul() {
+    const p = this.game.player;
+    let mul = this.def.playerSpeed;
+    if (p && this.puddles.length && this.inPuddle(p.x, p.y)) mul *= 0.6;
+    return mul;
+  }
+
+  enemySpeedMul(entity) {
+    let mul = this.def.enemySpeed;
+    if (this.puddles.length && this.inPuddle(entity.x, entity.y)) mul *= 0.6;
+    if (this.def.wind && typeof entity.angle === 'number') {
+      mul *= 1 + 0.12 * Math.cos(entity.angle - this.windAngle);
+    }
+    return mul;
+  }
+
+  staminaDrainMul() {
+    return this.def.staminaDrain;
+  }
+
+  staminaRegenMul() {
+    return this.def.staminaRegen;
+  }
+
+  scoreMul() {
+    return this.def.scoreMul;
+  }
+
+  // Mgła: z daleka wykładowca widzi tylko miejsce, w którym student był chwilę temu
+  adjustEnemyTarget(entity, tx, ty) {
+    if (!this.def.fog || !this.game.player) return { x: tx, y: ty };
+    const p = this.game.player;
+    const dist = Math.hypot(p.x - entity.x, p.y - entity.y);
+    const memo = entity._fogMemo;
+    if (dist < FOG_SIGHT || !memo || memo.t > this.time || this.time - memo.t > 1.8) {
+      entity._fogMemo = { x: tx, y: ty, t: this.time };
+    }
+    if (dist < FOG_SIGHT) return { x: tx, y: ty };
+    return { x: entity._fogMemo.x, y: entity._fogMemo.y };
+  }
+
+  // ---------------------------------------------------------------------
+  // Aktualizacja (wywoływana w każdej klatce rozgrywki)
+  // ---------------------------------------------------------------------
+  update(dt) {
+    const W = CANVAS_WIDTH;
+    const H = CANVAS_HEIGHT;
+    this.time += dt;
+    const gust = this.gustActive > 0 ? 2 : 1;
+
+    // Deszcz
+    if (this.drops.length) {
+      const slant = this.type === 'storm' ? 170 : 90;
+      for (const d of this.drops) {
+        d.y += d.speed * dt;
+        d.x += slant * dt * (d.speed / 600);
+        if (d.y > H + 20 || d.x > W + 60) Object.assign(d, this.makeDrop(false));
+      }
+      const rate = this.type === 'storm' ? 55 : 35;
+      const spawn = Math.floor(rate * dt + Math.random());
+      for (let i = 0; i < spawn; i++) {
+        this.splashes.push({ x: Math.random() * W, y: Math.random() * H, life: 0.3, maxLife: 0.3 });
+      }
+    }
+    for (let i = this.splashes.length - 1; i >= 0; i--) {
+      this.splashes[i].life -= dt;
+      if (this.splashes[i].life <= 0) this.splashes.splice(i, 1);
+    }
+
+    // Śnieg
+    for (const f of this.flakes) {
+      f.y += f.speed * dt;
+      f.x += Math.sin(this.time * 1.4 + f.sway) * 16 * dt + 6 * dt;
+      if (f.y > H + 6) Object.assign(f, this.makeFlake(false));
+      if (f.x > W + 6) f.x = -6;
+    }
+
+    // Liście, kartki z notatkami i smugi wiatru
+    const wx = Math.cos(this.windAngle);
+    const wy = Math.sin(this.windAngle);
+    for (const l of this.leaves) {
+      l.wobble += dt * 3;
+      l.rot += l.spin * dt;
+      const sp = l.speed * gust;
+      l.x += (wx * sp - wy * Math.sin(l.wobble) * 30) * dt;
+      l.y += (wy * sp + wx * Math.sin(l.wobble) * 30) * dt;
+      if (l.x < -40 || l.x > W + 40 || l.y < -40 || l.y > H + 40) Object.assign(l, this.makeLeaf(false));
+    }
+    for (const s of this.streaks) {
+      s.x += wx * s.speed * gust * dt;
+      s.y += wy * s.speed * gust * dt;
+      if (s.x < -90 || s.x > W + 90 || s.y < -90 || s.y > H + 90) Object.assign(s, this.makeStreak(false));
+    }
+
+    // Cienie chmur i płaty mgły
+    for (const c of this.clouds) {
+      c.x += c.speed * dt;
+      if (c.x - c.r > W) c.x = -c.r;
+    }
+    for (const b of this.fogBlobs) {
+      b.x += b.speed * dt;
+      b.phase += dt * 0.4;
+      if (b.x - b.r > W) b.x = -b.r;
+    }
+
+    this.updatePlayerTraces(dt);
+    this.updateLightning(dt);
+    this.updateWind(dt);
+  }
+
+  // Ślady stóp na śniegu i kręgi na wodzie przy wchodzeniu w kałużę
+  updatePlayerTraces(dt) {
+    const p = this.game.player;
+    for (let i = this.footprints.length - 1; i >= 0; i--) {
+      this.footprints[i].life -= dt;
+      if (this.footprints[i].life <= 0) this.footprints.splice(i, 1);
+    }
+    for (let i = this.ripples.length - 1; i >= 0; i--) {
+      this.ripples[i].life -= dt;
+      if (this.ripples[i].life <= 0) this.ripples.splice(i, 1);
+    }
+    if (!p) return;
+    if (!this.lastPlayerPos) this.lastPlayerPos = { x: p.x, y: p.y };
+    const moved = Math.hypot(p.x - this.lastPlayerPos.x, p.y - this.lastPlayerPos.y);
+    this.lastPlayerPos = { x: p.x, y: p.y };
+    if (moved < 0.05 || moved > 40) return;
+
+    if (this.def.footprints && !p.isHidden) {
+      this.footDist += moved;
+      if (this.footDist > 15) {
+        this.footDist = 0;
+        this.footSide *= -1;
+        const a = p.direction || 0;
+        this.footprints.push({
+          x: p.x + Math.cos(a + Math.PI / 2) * 5 * this.footSide,
+          y: p.y + 10 + Math.sin(a + Math.PI / 2) * 5 * this.footSide,
+          a,
+          life: 7,
+          maxLife: 7
+        });
+        if (this.footprints.length > 120) this.footprints.shift();
+      }
+    }
+
+    if (this.puddles.length && this.inPuddle(p.x, p.y)) {
+      this.rippleTimer -= dt;
+      if (this.rippleTimer <= 0) {
+        this.rippleTimer = 0.12;
+        this.ripples.push({ x: p.x, y: p.y + 10, life: 0.55, maxLife: 0.55 });
+        if (Math.random() < 0.6) {
+          this.game.particles.push({
+            x: p.x + (Math.random() - 0.5) * 14,
+            y: p.y + 10,
+            vx: (Math.random() - 0.5) * 60,
+            vy: -30 - Math.random() * 40,
+            life: 0.3,
+            maxLife: 0.3,
+            color: 'rgba(147, 197, 253, 0.8)',
+            size: 2
+          });
+        }
+      }
+    }
+  }
+
+  updateLightning(dt) {
+    if (this.boltTimer > 0) this.boltTimer -= dt;
+    if (this.flashTimer > 0) this.flashTimer -= dt;
+    const g = this.game;
+    if (!this.def.lightning || !g.player) return;
+
+    if (this.lightning) {
+      this.lightning.warn -= dt;
+      if (this.lightning.warn <= 0) {
+        this.strikeLightning(this.lightning);
+        this.lightning = null;
+        this.lightningTimer = 6 + Math.random() * 5;
+      }
+      return;
+    }
+
+    this.lightningTimer -= dt;
+    if (this.lightningTimer > 0) return;
+
+    const enemies = [g.examiner, g.instructor, g.deanClerk].filter(Boolean);
+    let tx;
+    let ty;
+    if (enemies.length && Math.random() < 0.35) {
+      // Piorun tam, dokąd za chwilę dobiegnie wykładowca (między nim a studentem)
+      const e = enemies[Math.floor(Math.random() * enemies.length)];
+      const dx = g.player.x - e.x;
+      const dy = g.player.y - e.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const ahead = Math.min(dist * 0.6, (e.speed || 2) * 60 * 1.2);
+      tx = e.x + (dx / dist) * ahead;
+      ty = e.y + (dy / dist) * ahead;
+    } else {
+      const a = Math.random() * Math.PI * 2;
+      const d = 20 + Math.random() * 80;
+      tx = g.player.x + Math.cos(a) * d;
+      ty = g.player.y + Math.sin(a) * d;
+    }
+    tx = Math.max(30, Math.min(CANVAS_WIDTH - 30, tx));
+    ty = Math.max(30, Math.min(CANVAS_HEIGHT - 30, ty));
+    this.lightning = { x: tx, y: ty, r: 58, warn: 1.5, maxWarn: 1.5 };
+    this.playLightningWarning();
+  }
+
+  strikeLightning(L) {
+    const g = this.game;
+    // Zygzak błyskawicy od górnej krawędzi do celu
+    const pts = [];
+    const sx = L.x + (Math.random() - 0.5) * 160;
+    const sy = -10;
+    const steps = 10;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const jitter = i === 0 || i === steps ? 0 : (Math.random() - 0.5) * 46 * (1 - t * 0.6);
+      pts.push({ x: sx + (L.x - sx) * t + jitter, y: sy + (L.y - sy) * t });
+    }
+    this.bolt = { pts, x: L.x, y: L.y };
+    this.boltTimer = 0.35;
+    this.flashTimer = 0.4;
+    this.playThunder();
+    g.triggerScreenShake(7, 0.35);
+
+    for (let i = 0; i < 20; i++) {
+      g.particles.push({
+        x: L.x,
+        y: L.y,
+        vx: (Math.random() - 0.5) * 240,
+        vy: (Math.random() - 0.5) * 240,
+        life: 0.45,
+        maxLife: 0.45,
+        color: Math.random() < 0.5 ? '#fde047' : '#ffffff',
+        size: 2.5
+      });
+    }
+
+    for (const e of [g.examiner, g.instructor, g.deanClerk]) {
+      if (!e) continue;
+      if (Math.hypot(e.x - L.x, e.y - L.y) <= L.r + (e.radius || 16) * 0.5) {
+        e.freezeTimer = Math.max(e.freezeTimer || 0, 2.5);
+        e.path = [];
+        g.addFloatingText('⚡ Porażony piorunem!', e.x, e.y - 32, '#fde047');
+      }
+    }
+
+    const p = g.player;
+    if (p && !p.isHidden && p.immunityTimer <= 0 && Math.hypot(p.x - L.x, p.y - L.y) <= L.r + p.radius * 0.5) {
+      p.stunTimer = Math.max(p.stunTimer || 0, 1.2);
+      g.addFloatingText('⚡ Trafił Cię piorun!', p.x, p.y - 28, '#fde047');
+      soundSystem.play('stun');
+    }
+  }
+
+  updateWind(dt) {
+    const g = this.game;
+    if (!this.def.wind || !g.player) return;
+    if (this.gustActive > 0) {
+      this.gustActive -= dt;
+    } else {
+      this.gustTimer -= dt;
+      if (this.gustTimer <= 0) {
+        this.gustActive = 1.1;
+        this.gustTimer = 6 + Math.random() * 4;
+        if (!this.isInsideRoom(g.player.x, g.player.y)) {
+          g.addFloatingText('💨 Podmuch!', g.player.x, g.player.y - 30, '#e2e8f0');
+        }
+      }
+    }
+    const p = g.player;
+    if (p.isHidden || p.stunTimer > 0) return;
+    if (this.isInsideRoom(p.x, p.y)) return; // w salach nie wieje
+    const force = (this.gustActive > 0 ? 1.35 : 0.5) * dt * 60;
+    const vx = Math.cos(this.windAngle) * force;
+    const vy = Math.sin(this.windAngle) * force;
+    if (!g.checkWallCollision(p.x + vx, p.y, p.radius)) p.x += vx;
+    if (!g.checkWallCollision(p.x, p.y + vy, p.radius)) p.y += vy;
+  }
+
+  // ---------------------------------------------------------------------
+  // Rysowanie
+  // ---------------------------------------------------------------------
+  // Warstwa podłoża: cienie chmur, śnieg, ślady, kałuże (pod postaciami)
+  renderGround(ctx) {
+    if (this.clouds.length) {
+      ctx.save();
+      const alpha = this.type === 'cloudy' ? 0.2 : 0.14;
+      for (const c of this.clouds) {
+        const grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.r);
+        grad.addColorStop(0, `rgba(2, 6, 23, ${alpha})`);
+        grad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    if (this.snowCover.length) {
+      ctx.save();
+      for (const s of this.snowCover) {
+        const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r);
+        grad.addColorStop(0, `rgba(241, 245, 255, ${s.a * 1.6})`);
+        grad.addColorStop(1, 'rgba(241, 245, 255, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    if (this.footprints.length) {
+      ctx.save();
+      for (const f of this.footprints) {
+        ctx.globalAlpha = Math.min(1, f.life / f.maxLife * 1.4) * 0.5;
+        ctx.fillStyle = '#94a3b8';
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.a);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 4, 2.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    for (const p of this.puddles) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.scale(1, p.ry / p.r);
+      const grad = ctx.createRadialGradient(0, 0, p.r * 0.15, 0, 0, p.r);
+      grad.addColorStop(0, 'rgba(59, 130, 200, 0.6)');
+      grad.addColorStop(0.75, 'rgba(37, 99, 170, 0.48)');
+      grad.addColorStop(1, 'rgba(30, 64, 120, 0.2)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = 'rgba(147, 197, 253, 0.55)';
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.beginPath();
+      ctx.arc(-p.r * 0.2, -p.r * 0.25, p.r * 0.5, Math.PI * 1.1, Math.PI * 1.55);
+      ctx.stroke();
+      // Kręgi od kropli deszczu
+      for (let k = 0; k < 2; k++) {
+        const t = (this.time * 0.9 + p.seed + k * 0.5) % 1;
+        const ox = Math.sin(p.seed * 3 + k * 2.1) * p.r * 0.35;
+        const oy = Math.cos(p.seed * 2 + k * 1.7) * p.r * 0.3;
+        ctx.strokeStyle = `rgba(191, 219, 254, ${0.55 * (1 - t)})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(ox, oy, 2 + t * p.r * 0.45, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if (this.ripples.length) {
+      ctx.save();
+      for (const r of this.ripples) {
+        const t = 1 - r.life / r.maxLife;
+        ctx.strokeStyle = `rgba(191, 219, 254, ${0.7 * (1 - t)})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.ellipse(r.x, r.y, 4 + t * 16, (4 + t * 16) * 0.55, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // Warstwa nieba: opady, wiatr, mgła i ostrzeżenie przed piorunem (nad postaciami)
+  renderSky(ctx) {
+    const W = CANVAS_WIDTH;
+    const H = CANVAS_HEIGHT;
+
+    // Barwa powietrza
+    ctx.save();
+    if (this.type === 'sunny' && !this.isNight) {
+      ctx.globalCompositeOperation = 'lighter';
+      const grad = ctx.createRadialGradient(W * 0.88, -60, 10, W * 0.88, -60, W * 0.95);
+      grad.addColorStop(0, 'rgba(255, 214, 120, 0.26)');
+      grad.addColorStop(0.45, 'rgba(255, 190, 90, 0.08)');
+      grad.addColorStop(1, 'rgba(255, 190, 90, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+      // Delikatne promienie słońca
+      ctx.translate(W * 0.88, -60);
+      for (let i = 0; i < 5; i++) {
+        const a = Math.PI * 0.55 + i * 0.13 + Math.sin(this.time * 0.3 + i) * 0.02;
+        ctx.fillStyle = `rgba(255, 220, 140, ${0.035 + 0.015 * Math.sin(this.time * 0.8 + i * 1.7)})`;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a - 0.035) * 900, Math.sin(a - 0.035) * 900);
+        ctx.lineTo(Math.cos(a + 0.035) * 900, Math.sin(a + 0.035) * 900);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (this.type === 'storm') {
+      ctx.fillStyle = 'rgba(6, 8, 28, 0.24)';
+      ctx.fillRect(0, 0, W, H);
+    } else if (this.type === 'rain') {
+      ctx.fillStyle = 'rgba(15, 30, 60, 0.14)';
+      ctx.fillRect(0, 0, W, H);
+    } else if (this.type === 'snow') {
+      ctx.fillStyle = 'rgba(210, 225, 255, 0.07)';
+      ctx.fillRect(0, 0, W, H);
+    } else if (this.type === 'cloudy') {
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.1)';
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
+
+    // Rozbryzgi kropli na ziemi
+    if (this.splashes.length) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      for (const s of this.splashes) {
+        const t = 1 - s.life / s.maxLife;
+        ctx.strokeStyle = `rgba(186, 215, 255, ${0.45 * (1 - t)})`;
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y, 1.5 + t * 5, (1.5 + t * 5) * 0.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Deszcz
+    if (this.drops.length) {
+      ctx.save();
+      const slant = (this.type === 'storm' ? 170 : 90) / 600;
+      ctx.strokeStyle = this.type === 'storm' ? 'rgba(190, 215, 255, 0.5)' : 'rgba(174, 205, 245, 0.42)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      for (const d of this.drops) {
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - slant * d.len, d.y - d.len);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Śnieg
+    if (this.flakes.length) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.beginPath();
+      for (const f of this.flakes) {
+        ctx.moveTo(f.x + f.r, f.y);
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Wichura: smugi powietrza, liście i kartki z notatkami
+    if (this.streaks.length) {
+      ctx.save();
+      const wx = Math.cos(this.windAngle);
+      const wy = Math.sin(this.windAngle);
+      ctx.strokeStyle = `rgba(226, 232, 240, ${this.gustActive > 0 ? 0.32 : 0.16})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (const s of this.streaks) {
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x - wx * s.len, s.y - wy * s.len);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const l of this.leaves) {
+      ctx.save();
+      ctx.translate(l.x, l.y);
+      ctx.rotate(l.rot);
+      ctx.fillStyle = l.color;
+      ctx.globalAlpha = 0.85;
+      if (l.paper) {
+        ctx.fillRect(-l.size, -l.size * 0.7, l.size * 2, l.size * 1.4);
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.7)';
+        ctx.fillRect(-l.size * 0.7, -l.size * 0.25, l.size * 1.4, 0.8);
+        ctx.fillRect(-l.size * 0.7, l.size * 0.2, l.size * 1.1, 0.8);
+      } else {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, l.size, l.size * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Mgła: widoczna tylko najbliższa okolica studenta
+    if (this.def.fog) {
+      ctx.save();
+      for (const b of this.fogBlobs) {
+        const r = b.r * (1 + Math.sin(b.phase) * 0.12);
+        const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
+        grad.addColorStop(0, 'rgba(203, 213, 225, 0.2)');
+        grad.addColorStop(1, 'rgba(203, 213, 225, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const p = this.game.player;
+      if (p) {
+        const grad = ctx.createRadialGradient(p.x, p.y, 60, p.x, p.y, 230);
+        grad.addColorStop(0, 'rgba(100, 116, 139, 0)');
+        grad.addColorStop(0.5, 'rgba(100, 116, 139, 0.6)');
+        grad.addColorStop(1, 'rgba(94, 108, 130, 0.93)');
+        ctx.fillStyle = grad;
+      } else {
+        ctx.fillStyle = 'rgba(100, 116, 139, 0.45)';
+      }
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+
+    // Ostrzeżenie: tu za chwilę uderzy piorun
+    if (this.lightning) {
+      const L = this.lightning;
+      const progress = 1 - L.warn / L.maxWarn;
+      const pulse = 0.5 + 0.5 * Math.sin(this.time * (10 + progress * 18));
+      ctx.save();
+      ctx.fillStyle = `rgba(250, 204, 21, ${0.16 + 0.16 * pulse})`;
+      ctx.beginPath();
+      ctx.arc(L.x, L.y, L.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.setLineDash([7, 6]);
+      ctx.lineDashOffset = -this.time * 30;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(253, 224, 71, ${0.65 + 0.3 * pulse})`;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.beginPath();
+      ctx.arc(L.x, L.y, L.r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.stroke();
+      ctx.font = 'bold 22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⚡', L.x, L.y);
+      ctx.restore();
+    }
+  }
+
+  // Błyskawica i błysk (nad wszystkim, także nad ciemnością przy awarii prądu)
+  renderFlash(ctx) {
+    if (this.boltTimer > 0 && this.bolt) {
+      const a = Math.min(1, this.boltTimer / 0.35);
+      const pts = this.bolt.pts;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const drawPath = () => {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+      };
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = `rgba(253, 224, 71, ${0.5 * a})`;
+      ctx.lineWidth = 9;
+      drawPath();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * a})`;
+      ctx.lineWidth = 2.6;
+      drawPath();
+      const glow = ctx.createRadialGradient(this.bolt.x, this.bolt.y, 2, this.bolt.x, this.bolt.y, 70);
+      glow.addColorStop(0, `rgba(255, 250, 200, ${0.8 * a})`);
+      glow.addColorStop(1, 'rgba(255, 250, 200, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(this.bolt.x, this.bolt.y, 70, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    if (this.flashTimer > 0) {
+      ctx.save();
+      ctx.fillStyle = `rgba(226, 232, 255, ${0.45 * (this.flashTimer / 0.4)})`;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.restore();
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Dźwięki pogody (Web Audio, przez kanał efektów SFX)
+  // ---------------------------------------------------------------------
+  syncAmbience() {
+    const ss = soundSystem;
+    if (!ss || !ss.ctx || !ss.noiseBuffer) return;
+    const kindMap = { rain: 'rain', storm: 'storm', wind: 'wind', snow: 'snow' };
+    const kind = kindMap[this.type] || null;
+    let target = 0;
+    if (kind && this.game.state === 'PLAYING' && !ss.muted) {
+      target = { rain: 0.1, storm: 0.15, wind: 0.09, snow: 0.035 }[kind];
+      if (kind === 'wind') target *= this.gustActive > 0 ? 2.6 : 1 + 0.25 * Math.sin(this.time * 1.7);
+    }
+    if (!this.ambience) {
+      if (target <= 0) return;
+      try {
+        const src = ss.ctx.createBufferSource();
+        src.buffer = ss.noiseBuffer;
+        src.loop = true;
+        const filter = ss.ctx.createBiquadFilter();
+        const gain = ss.ctx.createGain();
+        gain.gain.value = 0;
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(ss.getSFXDestination());
+        src.start();
+        this.ambience = { src, filter, gain, kind: null };
+      } catch {
+        return;
+      }
+    }
+    const f = this.ambience.filter;
+    const now = ss.ctx.currentTime;
+    if (kind && this.ambience.kind !== kind) {
+      if (kind === 'wind') {
+        f.type = 'bandpass';
+        f.Q.value = 0.9;
+      } else if (kind === 'snow') {
+        f.type = 'lowpass';
+        f.frequency.value = 520;
+        f.Q.value = 0.5;
+      } else {
+        f.type = 'highpass';
+        f.frequency.value = kind === 'storm' ? 700 : 1100;
+        f.Q.value = 0.4;
+      }
+      this.ambience.kind = kind;
+    }
+    if (kind === 'wind') {
+      f.frequency.setTargetAtTime(this.gustActive > 0 ? 760 : 380 + 90 * Math.sin(this.time * 0.9), now, 0.3);
+    }
+    this.ambience.gain.gain.setTargetAtTime(target, now, 0.25);
+  }
+
+  playLightningWarning() {
+    const ss = soundSystem;
+    if (!ss || ss.muted || !ss.ctx) return;
+    try {
+      const ctx = ss.ctx;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(110, now);
+      osc.frequency.linearRampToValueAtTime(240, now + 1.4);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.05, now + 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.45);
+      osc.connect(gain);
+      gain.connect(ss.getSFXDestination());
+      osc.start(now);
+      osc.stop(now + 1.5);
+    } catch {}
+  }
+
+  playThunder() {
+    const ss = soundSystem;
+    if (!ss || ss.muted) return;
+    ss.init();
+    if (!ss.ctx || !ss.noiseBuffer) return;
+    try {
+      const ctx = ss.ctx;
+      const now = ctx.currentTime;
+      // Trzask uderzenia
+      const crack = ctx.createBufferSource();
+      crack.buffer = ss.noiseBuffer;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 1400;
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.0001, now);
+      cg.gain.exponentialRampToValueAtTime(0.6, now + 0.01);
+      cg.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      crack.connect(hp);
+      hp.connect(cg);
+      cg.connect(ss.getSFXDestination());
+      crack.start(now, Math.random());
+      crack.stop(now + 0.3);
+      // Grzmot
+      const rumble = ctx.createBufferSource();
+      rumble.buffer = ss.noiseBuffer;
+      rumble.loop = true;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(280, now);
+      lp.frequency.exponentialRampToValueAtTime(70, now + 2.2);
+      const rg = ctx.createGain();
+      rg.gain.setValueAtTime(0.0001, now);
+      rg.gain.exponentialRampToValueAtTime(1.1, now + 0.08);
+      rg.gain.exponentialRampToValueAtTime(0.0001, now + 2.4);
+      rumble.connect(lp);
+      lp.connect(rg);
+      rg.connect(ss.getSFXDestination());
+      rumble.start(now);
+      rumble.stop(now + 2.5);
+    } catch {}
+  }
+
+  // ---------------------------------------------------------------------
+  // Interfejs: panel na ekranie startowym, ustawienia i plakietka w grze
+  // ---------------------------------------------------------------------
+  bindUI() {
+    this.ui = {
+      panelIcon: document.getElementById('weather-panel-icon'),
+      panelName: document.getElementById('weather-panel-name'),
+      panelSource: document.getElementById('weather-panel-source'),
+      panelBonus: document.getElementById('weather-panel-bonus'),
+      panelEffects: document.getElementById('weather-panel-effects'),
+      chips: document.getElementById('weather-chips'),
+      select: document.getElementById('setting-weather'),
+      settingInfo: document.getElementById('setting-weather-info'),
+      badge: document.getElementById('weather-badge'),
+      badgeIcon: document.getElementById('weather-badge-icon'),
+      badgeText: document.getElementById('weather-badge-text')
+    };
+
+    if (this.ui.chips) {
+      this.ui.chips.innerHTML = '';
+      const options = [{ id: 'live', label: '📡 Na żywo' }].concat(
+        WEATHER_ORDER.map(id => ({ id, label: `${WEATHER_TYPES[id].icon} ${WEATHER_TYPES[id].chip}` }))
+      );
+      for (const opt of options) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'weather-chip';
+        btn.dataset.weather = opt.id;
+        btn.setAttribute('role', 'radio');
+        btn.textContent = opt.label;
+        btn.addEventListener('click', (e) => {
+          e.currentTarget.blur();
+          soundSystem.init();
+          this.setMode(opt.id);
+        });
+        this.ui.chips.appendChild(btn);
+      }
+    }
+
+    if (this.ui.select) {
+      this.ui.select.innerHTML = '';
+      const addOption = (value, text) => {
+        const op = document.createElement('option');
+        op.value = value;
+        op.textContent = text;
+        this.ui.select.appendChild(op);
+      };
+      addOption('live', '📡 Na żywo (okolice ALK)');
+      WEATHER_ORDER.forEach(id => addOption(id, `${WEATHER_TYPES[id].icon} ${WEATHER_TYPES[id].name}`));
+      this.ui.select.addEventListener('change', (e) => {
+        this.setMode(e.target.value);
+      });
+    }
+
+    this.updateUI();
+  }
+
+  notify() {
+    this.updateUI();
+  }
+
+  getInfo() {
+    const d = this.def;
+    const icon = this.isNight && d.nightIcon ? d.nightIcon : d.icon;
+    const name = this.isNight && d.nightName ? d.nightName : d.name;
+    const isLive = this.mode === 'live';
+    let source;
+    let temp = null;
+    if (isLive) {
+      if (this.live && (this.liveStatus === 'ok' || this.liveStatus === 'stale')) {
+        temp = Math.round(this.live.temp);
+        const timeStr = this.live.fetchedAt ? new Date(this.live.fetchedAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '';
+        source = `📡 Na żywo przy ALK · ${temp}°C · wiatr ${Math.round(this.live.wind)} km/h`;
+        if (timeStr) source += ` · aktualizacja ${timeStr}`;
+        if (this.liveStatus === 'stale') source += ' (brak połączenia, ostatni odczyt)';
+      } else if (this.liveStatus === 'error') {
+        source = '📡 Nie udało się pobrać pogody, więc gramy przy pochmurnym niebie. Możesz wybrać pogodę ręcznie.';
+      } else {
+        source = '📡 Sprawdzam pogodę przy ALK…';
+      }
+    } else {
+      source = '🎛️ Pogoda wybrana ręcznie';
+    }
+    return { icon, name, source, temp, isLive, effects: d.effects, scoreMul: d.scoreMul };
+  }
+
+  updateUI() {
+    const ui = this.ui;
+    if (!ui) return;
+    const info = this.getInfo();
+    const bonusText = info.scoreMul > 1 ? `🏆 Premia ${formatWeatherMul(info.scoreMul)} pkt` : 'Bez premii punktowej';
+
+    if (ui.panelIcon) ui.panelIcon.textContent = info.icon;
+    if (ui.panelName) ui.panelName.textContent = info.name;
+    if (ui.panelSource) ui.panelSource.textContent = info.source;
+    if (ui.panelBonus) {
+      ui.panelBonus.textContent = bonusText;
+      ui.panelBonus.classList.toggle('is-neutral', !(info.scoreMul > 1));
+    }
+    if (ui.panelEffects) {
+      ui.panelEffects.innerHTML = '';
+      for (const line of info.effects) {
+        const li = document.createElement('li');
+        li.textContent = line;
+        ui.panelEffects.appendChild(li);
+      }
+    }
+    if (ui.chips) {
+      for (const btn of ui.chips.querySelectorAll('.weather-chip')) {
+        const active = btn.dataset.weather === this.mode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-checked', active ? 'true' : 'false');
+        if (btn.dataset.weather === 'live') {
+          const liveDef = this.live && this.live.type ? WEATHER_TYPES[this.live.type] : null;
+          const liveIcon = liveDef ? (this.live.isDay === false && liveDef.nightIcon ? liveDef.nightIcon : liveDef.icon) : '';
+          btn.textContent = liveIcon ? `📡 Na żywo (${liveIcon})` : '📡 Na żywo';
+        }
+      }
+    }
+    if (ui.select) {
+      ui.select.value = this.mode;
+    }
+    if (ui.settingInfo) {
+      ui.settingInfo.textContent = `${info.icon} ${info.name}${info.temp !== null ? `, ${info.temp}°C` : ''} · ${info.scoreMul > 1 ? `premia ${formatWeatherMul(info.scoreMul)} pkt` : 'bez premii'}`;
+    }
+    if (ui.badge) {
+      let text = info.name;
+      if (info.temp !== null) text += ` · ${info.temp}°C`;
+      if (info.scoreMul > 1) text += ` · ${formatWeatherMul(info.scoreMul)} pkt`;
+      if (ui.badgeIcon) ui.badgeIcon.textContent = info.icon;
+      if (ui.badgeText) ui.badgeText.textContent = text;
+      ui.badge.title = `${info.name}: ${info.effects.join(' ')}`;
+    }
+  }
+}
+
 class KozminskiEscapeGame {
   constructor() {
     this.canvas = document.getElementById('game-canvas');
@@ -256,6 +1533,12 @@ class KozminskiEscapeGame {
     this.initCanvasResolution();
     this.initEventListeners();
     this.loadSettings();
+
+    // System pogody: aktualna pogoda spod ALK albo wybrana ręcznie
+    this.weather = new WeatherSystem(this);
+    this.weather.bindUI();
+    this.weather.fetchLive();
+
     this.resetHUD();
     this.updateRecordDisplays();
     this.render(); // Początkowy render kampusu
@@ -1274,6 +2557,7 @@ class KozminskiEscapeGame {
     }
 
     this.initPlayerAndEnemiesPositions();
+    if (this.weather) this.weather.onMenu();
     this.render();
   }
 
@@ -1740,6 +3024,9 @@ class KozminskiEscapeGame {
 
     this.bushes.forEach(b => (b.cooldown = 0));
 
+    // Pogoda na tę sesję (nowe kałuże, kierunek wiatru itd.)
+    if (this.weather) this.weather.prepareForGame();
+
     this.elapsedSeconds = 0;
     this.updateTimeDisplay();
 
@@ -2190,6 +3477,7 @@ class KozminskiEscapeGame {
     this.updateTimeDisplay();
 
     this.updatePlayer(dt);
+    if (this.weather) this.weather.update(dt);
     this.updateEnemiesSpawnProgress();
     this.updateExaminer(dt);
     this.updateInstructor(dt);
@@ -2284,7 +3572,7 @@ class KozminskiEscapeGame {
       this.player.stamina = this.player.maxStamina;
     } else if (this.keys.sprint && isMoving && this.player.canSprint && this.player.stamina > 3) {
       this.sprintUsed = true;
-      this.player.stamina = Math.max(0, this.player.stamina - 28 * dt);
+      this.player.stamina = Math.max(0, this.player.stamina - 28 * dt * (this.weather ? this.weather.staminaDrainMul() : 1));
       this.player.currentSpeed = this.player.sprintSpeed * (this.player.slowTimer > 0 ? 0.6 : 1);
       this.player.isSprinting = true;
       soundSystem.playSprint();
@@ -2306,7 +3594,7 @@ class KozminskiEscapeGame {
       this.player.isSprinting = false;
       this.player.currentSpeed = baseSpd;
       const regenRate = isMoving ? 16 : 26;
-      this.player.stamina = Math.min(this.player.maxStamina, this.player.stamina + regenRate * dt);
+      this.player.stamina = Math.min(this.player.maxStamina, this.player.stamina + regenRate * dt * (this.weather ? this.weather.staminaRegenMul() : 1));
     }
 
     // Dyszenie przy niskiej staminie (< 20%) podczas marszu/biegu
@@ -2316,7 +3604,7 @@ class KozminskiEscapeGame {
 
     // Aktualizacja pozycji gracza z kolizjami (ruch mnożony przez dt * 60)
     if (isMoving) {
-      const step = this.player.currentSpeed * (dt * 60);
+      const step = this.player.currentSpeed * (dt * 60) * (this.weather ? this.weather.playerSpeedMul() : 1);
       const nextX = this.player.x + dx * step;
       const nextY = this.player.y + dy * step;
 
@@ -2469,6 +3757,13 @@ class KozminskiEscapeGame {
       }
     }
 
+    // Mgła: z daleka egzaminator goni miejsce, w którym widział studenta chwilę temu
+    if (this.weather) {
+      const fogTarget = this.weather.adjustEnemyTarget(this.examiner, targetX, targetY);
+      targetX = fogTarget.x;
+      targetY = fogTarget.y;
+    }
+
     // Wyznaczanie prędkości profesora
     let targetSpeed = this.examiner.baseSpeed + this.ectsCollected * 0.085;
     if (this.player.deanPetitionActiveTimer > 0) {
@@ -2570,6 +3865,13 @@ class KozminskiEscapeGame {
       }
     }
 
+    // Mgła: z daleka prowadzący też widzi tylko, gdzie student był chwilę temu
+    if (this.weather) {
+      const fogTarget = this.weather.adjustEnemyTarget(this.instructor, targetX, targetY);
+      targetX = fogTarget.x;
+      targetY = fogTarget.y;
+    }
+
     // BFS co 300 ms
     if (!this.instructor.bfsTimer) this.instructor.bfsTimer = 0;
     this.instructor.bfsTimer -= dt;
@@ -2661,7 +3963,7 @@ class KozminskiEscapeGame {
     }
 
     entity.angle = Math.atan2(dy, dx);
-    const step = entity.speed * (dt * 60);
+    const step = entity.speed * (dt * 60) * (this.weather ? this.weather.enemySpeedMul(entity) : 1);
     entity.x += (dx / dist) * step;
     entity.y += (dy / dist) * step;
   }
@@ -2733,7 +4035,7 @@ class KozminskiEscapeGame {
 
           const pts = 1 * multiplier;
           this.ectsCollected += pts;
-          const scoreEarned = 100 * this.combo;
+          const scoreEarned = Math.round(100 * this.combo * (this.weather ? this.weather.scoreMul() : 1));
           this.score += scoreEarned;
 
           soundSystem.play('ects', this.combo);
@@ -2765,7 +4067,7 @@ class KozminskiEscapeGame {
           const pts = 3 * multiplier;
           this.ectsCollected += pts;
           this.goldEctsCollected++;
-          const scoreEarned = 300 * this.combo;
+          const scoreEarned = Math.round(300 * this.combo * (this.weather ? this.weather.scoreMul() : 1));
           this.score += scoreEarned;
 
           soundSystem.play('gold');
@@ -2908,7 +4210,9 @@ class KozminskiEscapeGame {
       }
     ];
 
-    const ev = events[Math.floor(Math.random() * events.length)];
+    // Podczas burzy awarie prądu zdarzają się częściej
+    const stormBlackout = this.weather && this.weather.type === 'storm' && Math.random() < 0.4;
+    const ev = stormBlackout ? events[0] : events[Math.floor(Math.random() * events.length)];
     this.activeEvent = {
       ...ev,
       duration: 10.0,
@@ -3435,7 +4739,9 @@ class KozminskiEscapeGame {
       this.victoryScore.textContent = `${this.score.toLocaleString('pl-PL')} pkt`;
     }
     if (this.victoryTimeBonus) {
-      this.victoryTimeBonus.textContent = `Bonus: +${timeBonus.toLocaleString('pl-PL')} pkt`;
+      const weatherInfo = this.weather ? this.weather.getInfo() : null;
+      const weatherNote = weatherInfo && weatherInfo.scoreMul > 1 ? ` · ${weatherInfo.icon} premia pogodowa ${formatWeatherMul(weatherInfo.scoreMul)} za ECTS` : '';
+      this.victoryTimeBonus.textContent = `Bonus: +${timeBonus.toLocaleString('pl-PL')} pkt${weatherNote}`;
     }
     if (this.victoryCombo) {
       this.victoryCombo.textContent = `x${this.maxCombo}`;
@@ -4277,6 +5583,9 @@ class KozminskiEscapeGame {
     // 3. Dynamiczne wskaźniki krzaków (cooldown)
     this.drawDynamicBushes();
 
+    // 3a. Pogoda: kałuże, cienie chmur, śnieg i ślady (pod postaciami)
+    if (this.weather) this.weather.renderGround(this.ctx);
+
     // 3b. Pulsujący cel finałowy „ODDAJ INDEKS” w Dziekanacie
     if (this.finalPhase) {
       this.drawFinalTarget();
@@ -4306,6 +5615,9 @@ class KozminskiEscapeGame {
     this.drawFloatingTexts();
     this.drawFlyingOrbs();
 
+    // 8b. Pogoda: deszcz, śnieg, wiatr, mgła i ostrzeżenia przed piorunem
+    if (this.weather) this.weather.renderSky(this.ctx);
+
     // 9. Nocna winieta na obrzeżach canvasu
     this.drawVignette();
 
@@ -4318,6 +5630,9 @@ class KozminskiEscapeGame {
     if (this.activeEvent && this.activeEvent.id === 'blackout') {
       this.drawBlackoutEffect();
     }
+
+    // 10b. Błyskawica rozświetla kampus (także podczas awarii prądu)
+    if (this.weather) this.weather.renderFlash(this.ctx);
 
     // 11. Skreślenie czerwonym długopisem podczas sekwencji złapania
     if (this.isCaughtSequence) {
@@ -5577,41 +6892,56 @@ class KozminskiEscapeGame {
 
   drawBlackoutEffect() {
     this.ctx.save();
-    // 1. Warstwa całkowitego zaciemnienia kampusu
-    this.ctx.fillStyle = 'rgba(2, 6, 18, 0.96)';
-    this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // 1. Ciemność rysowana na OSOBNEJ warstwie (offscreen canvas).
+    //    Dzięki temu 'destination-out' wycina dziurę tylko w ciemności,
+    //    a nie w całej planszy pod spodem (wcześniej latarka pokazywała czarną dziurę).
+    const mainCanvas = this.canvas;
+    if (!this._darkCanvas) this._darkCanvas = document.createElement('canvas');
+    const dc = this._darkCanvas;
+    if (dc.width !== mainCanvas.width || dc.height !== mainCanvas.height) {
+      dc.width = mainCanvas.width;
+      dc.height = mainCanvas.height;
+    }
+    const dctx = dc.getContext('2d');
+    const scale = mainCanvas.width / CANVAS_WIDTH;
+    dctx.setTransform(1, 0, 0, 1, 0, 0);
+    dctx.globalCompositeOperation = 'source-over';
+    dctx.clearRect(0, 0, dc.width, dc.height);
+    dctx.setTransform(scale, 0, 0, scale, 0, 0);
+    dctx.fillStyle = 'rgba(2, 6, 18, 0.96)';
+    dctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // 2. Miękki stożek latarki studenta
-    this.ctx.save();
-    this.ctx.globalCompositeOperation = 'destination-out';
+    // 2. Miękki stożek latarki studenta — wycinany tylko w warstwie ciemności
+    dctx.globalCompositeOperation = 'destination-out';
 
-    // Okrąg wokół nóg studenta (promień 38 px)
-    const footGrad = this.ctx.createRadialGradient(this.player.x, this.player.y, 6, this.player.x, this.player.y, 38);
+    // Okrąg światła wokół studenta (promień 60 px)
+    const footGrad = dctx.createRadialGradient(this.player.x, this.player.y, 8, this.player.x, this.player.y, 60);
     footGrad.addColorStop(0, 'rgba(0, 0, 0, 1)');
-    footGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.65)');
+    footGrad.addColorStop(0.6, 'rgba(0, 0, 0, 0.75)');
     footGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    this.ctx.fillStyle = footGrad;
-    this.ctx.beginPath();
-    this.ctx.arc(this.player.x, this.player.y, 38, 0, Math.PI * 2);
-    this.ctx.fill();
+    dctx.fillStyle = footGrad;
+    dctx.beginPath();
+    dctx.arc(this.player.x, this.player.y, 60, 0, Math.PI * 2);
+    dctx.fill();
 
-    // Stożek latarki skierowany w kierunku studenta (kąt 65°, zasięg 180 px)
-    const coneAngle = this.player.direction;
+    // Stożek latarki skierowany w kierunku ruchu studenta (kąt ~65°, zasięg 180 px)
+    const coneAngle = this.player.direction || 0;
     const halfSpread = 0.55;
     const range = 180;
-
-    const coneGrad = this.ctx.createRadialGradient(this.player.x, this.player.y, 10, this.player.x, this.player.y, range);
+    const coneGrad = dctx.createRadialGradient(this.player.x, this.player.y, 10, this.player.x, this.player.y, range);
     coneGrad.addColorStop(0, 'rgba(0, 0, 0, 1)');
-    coneGrad.addColorStop(0.65, 'rgba(0, 0, 0, 0.7)');
+    coneGrad.addColorStop(0.65, 'rgba(0, 0, 0, 0.8)');
     coneGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    dctx.fillStyle = coneGrad;
+    dctx.beginPath();
+    dctx.moveTo(this.player.x, this.player.y);
+    dctx.arc(this.player.x, this.player.y, range, coneAngle - halfSpread, coneAngle + halfSpread);
+    dctx.closePath();
+    dctx.fill();
+    dctx.globalCompositeOperation = 'source-over';
 
-    this.ctx.fillStyle = coneGrad;
-    this.ctx.beginPath();
-    this.ctx.moveTo(this.player.x, this.player.y);
-    this.ctx.arc(this.player.x, this.player.y, range, coneAngle - halfSpread, coneAngle + halfSpread);
-    this.ctx.closePath();
-    this.ctx.fill();
-    this.ctx.restore();
+    // Nałożenie gotowej warstwy ciemności na planszę (w tej samej skali i z drganiami ekranu)
+    this.ctx.drawImage(dc, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // 3. Klimatyczne ciepłe ziarno światła latarki
     this.ctx.save();
@@ -5851,3 +7181,4 @@ if (document.readyState === 'loading') {
 } else {
   window.kozminskiGame = new KozminskiEscapeGame();
 }
+

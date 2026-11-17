@@ -127,6 +127,12 @@
           <!-- Element Canvas 800x540 -->
           <canvas id="game-canvas" width="800" height="540" aria-label="Pole gry Kozminski Escape 2D"></canvas>
 
+          <!-- Aktualna pogoda w grze -->
+          <div id="weather-badge" class="weather-badge">
+            <span id="weather-badge-icon" aria-hidden="true">☁️</span>
+            <span id="weather-badge-text">Pochmurno</span>
+          </div>
+
           <!-- Dynamiczne odliczanie przed startem (3... 2... 1... START!) -->
           <div id="countdown-overlay" class="countdown-overlay hidden" aria-live="assertive">
             <div id="countdown-box" class="countdown-box">
@@ -194,6 +200,20 @@
                 <button type="button" class="sem-tab active" data-sem="1">Semestr I (Normalny)</button>
                 <button type="button" class="sem-tab" data-sem="2">Semestr II (Trudniejszy)</button>
                 <button type="button" class="sem-tab" data-sem="3">Semestr III (Sesja poprawkowa)</button>
+              </div>
+
+              <!-- Pogoda na kampusie: na żywo spod ALK albo wybrana ręcznie -->
+              <div id="weather-panel" class="weather-panel">
+                <div class="weather-panel-head">
+                  <span id="weather-panel-icon" class="weather-panel-icon" aria-hidden="true">☁️</span>
+                  <div class="weather-panel-info">
+                    <span id="weather-panel-source" class="weather-panel-source">📡 Sprawdzam pogodę przy ALK…</span>
+                    <strong id="weather-panel-name" class="weather-panel-name">Pogoda na kampusie</strong>
+                  </div>
+                  <span id="weather-panel-bonus" class="weather-panel-bonus is-neutral">Bez premii punktowej</span>
+                </div>
+                <ul id="weather-panel-effects" class="weather-panel-effects"></ul>
+                <div id="weather-chips" class="weather-chips" role="radiogroup" aria-label="Wybierz pogodę"></div>
               </div>
 
               <!-- Zwięzły opis (2-3 zdania) -->
@@ -563,6 +583,18 @@
                     <input type="checkbox" id="setting-quotes" checked />
                     <span class="toggle-slider"></span>
                   </label>
+                </div>
+
+                <!-- Pogoda na kampusie -->
+                <div class="setting-row setting-row-weather">
+                  <div class="setting-label-wrap">
+                    <span class="setting-icon">🌦️</span>
+                    <div class="setting-text">
+                      <label for="setting-weather" class="setting-title">Pogoda na kampusie</label>
+                      <span id="setting-weather-info" class="setting-sub">Na żywo z okolic ALK albo wybrana ręcznie</span>
+                    </div>
+                  </div>
+                  <select id="setting-weather" class="setting-select"></select>
                 </div>
               </div>
 
