@@ -202,6 +202,12 @@
                 <button type="button" class="sem-tab" data-sem="3">Semestr III (Sesja poprawkowa)</button>
               </div>
 
+              <!-- Wybór mapy kampusu -->
+              <div class="map-selector" role="group" aria-label="Wybór piętra kampusu">
+                <button type="button" class="sem-tab map-tab active" data-map="parter">🌿 Parter (Patio)</button>
+                <button type="button" class="sem-tab map-tab" data-map="atrium">🏢 I piętro (Atrium)</button>
+              </div>
+
               <!-- Pogoda na kampusie: na żywo spod ALK albo wybrana ręcznie -->
               <div id="weather-panel" class="weather-panel">
                 <div class="weather-panel-head">
@@ -214,6 +220,11 @@
                 </div>
                 <ul id="weather-panel-effects" class="weather-panel-effects"></ul>
                 <div id="weather-chips" class="weather-chips" role="radiogroup" aria-label="Wybierz pogodę"></div>
+                <div class="daytime-row">
+                  <span class="daytime-label">Pora dnia:</span>
+                  <div id="daytime-chips" class="weather-chips" role="radiogroup" aria-label="Wybierz porę dnia"></div>
+                </div>
+                <span id="weather-panel-calendar" class="weather-panel-calendar">📅 Kalendarz akademicki</span>
               </div>
 
               <!-- Zwięzły opis (2-3 zdania) -->
@@ -264,6 +275,11 @@
                   <span id="rec-sem-2"></span>
                   <span id="rec-sem-3"></span>
                 </div>
+              </div>
+
+              <!-- Aktualne saldo Stypendium -->
+              <div id="start-wallet-display" class="start-wallet-box">
+                💰 Stypendium: <strong id="start-wallet-val" class="tabular-nums">0</strong> zł
               </div>
 
               <!-- Zwinięta legenda przedmiotów i sterowania -->
@@ -350,6 +366,9 @@
                   <button id="btn-open-enemies-menu" class="btn-action btn-secondary btn-sub" type="button">
                     👥 Przeciwnicy
                   </button>
+                  <button id="btn-open-shop" class="btn-action btn-secondary btn-sub" type="button">
+                    🛒 Sklep ALK
+                  </button>
                 </div>
               </div>
             </div>
@@ -402,11 +421,78 @@
                     <span>pojawia się od 20 ECTS (Semestr II: od 15 ECTS, Semestr III: od startu) i krąży stałą trasą wokół Patio. Nie kończy gry, ale dotknięcie ogłusza Cię na 2 s, a w tym czasie inni przeciwnicy mogą Cię złapać. Potem przez 3 s nie może ogłuszyć Cię ponownie.</span>
                   </div>
                 </div>
+
+                <!-- 4. Pan z ochrony -->
+                <div class="legend-item enemy-item enemy-item-guard">
+                  <div class="legend-icon">👮</div>
+                  <div class="legend-info">
+                    <div class="legend-header-row">
+                      <strong>Pan z ochrony (granatowy mundur, latarka)</strong>
+                      <span class="enemy-color-marker marker-guard" title="Granatowy mundur i żółta latarka" aria-label="Kolor postaci na planszy: granatowy"></span>
+                    </div>
+                    <span>patroluje korytarze kampusu od 15 ECTS (Semestr II: od 5 ECTS, Semestr III: od początku). Nie kończy gry przy dotknięciu, ale gdy zobaczy Cię biegnącego w snopie swojej latarki (lub bardzo blisko), gwiżdże („Nie biegamy po korytarzu!”), spowalnia Cię na 1,5 s i alarmuje Egzaminatora (+25% prędkości na 3 s).</span>
+                  </div>
+                </div>
+
+                <!-- 5. Rektor (wydarzenie, sojusznik) -->
+                <div class="legend-item enemy-item enemy-item-rector">
+                  <div class="legend-icon">🎩</div>
+                  <div class="legend-info">
+                    <div class="legend-header-row">
+                      <strong>Rektor (wydarzenie · sojusznik)</strong>
+                      <span class="enemy-color-marker marker-rector" title="Złoty łańcuch rektorski" aria-label="Kolor postaci na planszy: złoty"></span>
+                    </div>
+                    <span>pojawia się podczas losowego wydarzenia „Wizyta Rektora!” na 10 s i spaceruje po korytarzach. Gdy zbliży się do przeciwników, ci kłaniają się i nie mogą Cię złapać! Uściśnij dłoń Rektorowi, aby zdobyć Stypendium Rektora (+500 pkt).</span>
+                  </div>
+                </div>
+
+                <!-- 6. Komisja Egzaminacyjna (boss finału Semestru III) -->
+                <div class="legend-item enemy-item enemy-item-boss">
+                  <div class="legend-icon">🧑‍⚖️</div>
+                  <div class="legend-info">
+                    <div class="legend-header-row">
+                      <strong>Komisja Egzaminacyjna (boss finału Semestru III)</strong>
+                      <span class="enemy-color-marker marker-boss" title="Stół egzaminacyjny i czerwono-złote oznaczenie bossa" aria-label="Kolor postaci na planszy: ciemnoczerwony"></span>
+                    </div>
+                    <span>pojawia się wyłącznie w finale Semestru III („Egzamin ustny”, czas 35 s). Strzela co chwilę wachlarzem trzech pytań „❓” (ogłuszenie na 0,8 s) i goni za stołem niczym Egzaminator. Zanim Dziekanat odblokuje oddanie indeksu, musisz zebrać 3 kartki „📄 Odpowiedzi”.</span>
+                  </div>
+                </div>
               </div>
 
               <p class="enemies-defense-note">
                 💻 Gemini AI zamraża wszystkich przeciwników na 3,5 s, a 🪪 Legitymacja chroni przed jednym złapaniem przez egzaminatora lub prowadzącego.
               </p>
+            </div>
+          </div>
+
+          <!-- Modal Sklepu ALK (🛒 Sklep ALK) -->
+          <div id="modal-shop" class="modal-overlay modal-shop-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="shop-modal-title">
+            <div class="modal-card modal-shop-card">
+              <div class="shop-modal-header">
+                <div class="modal-enemies-title-wrap">
+                  <div class="modal-badge">AKADEMIA LEONA KOŹMIŃSKIEGO · SKLEP</div>
+                  <h2 id="shop-modal-title" class="modal-title">🛒 Sklep ALK</h2>
+                </div>
+                <button id="btn-close-shop" class="modal-close-btn" type="button" aria-label="Zamknij">✕</button>
+              </div>
+
+              <div class="shop-wallet-bar">
+                <span>💰 Stypendium: <strong id="shop-wallet-val" class="tabular-nums">0</strong> zł</span>
+              </div>
+
+              <div class="shop-section">
+                <h3 class="shop-section-title">⚡ Ulepszenia</h3>
+                <div id="shop-upgrades-grid" class="shop-upgrades-grid"></div>
+              </div>
+
+              <div class="shop-section">
+                <h3 class="shop-section-title">👔 Stroje</h3>
+                <div id="shop-skins-grid" class="shop-skins-grid"></div>
+              </div>
+
+              <div class="shop-modal-footer">
+                <button id="btn-shop-done" class="btn-action btn-primary" type="button">✓ Gotowe</button>
+              </div>
             </div>
           </div>
 
@@ -596,6 +682,18 @@
                   </div>
                   <select id="setting-weather" class="setting-select"></select>
                 </div>
+
+                <!-- Pora dnia -->
+                <div class="setting-row setting-row-weather">
+                  <div class="setting-label-wrap">
+                    <span class="setting-icon">🌙</span>
+                    <div class="setting-text">
+                      <label for="setting-daytime" class="setting-title">Pora dnia</label>
+                      <span class="setting-sub">Nocą kampus jest ciemny, a wykładowcy chodzą z latarkami</span>
+                    </div>
+                  </div>
+                  <select id="setting-daytime" class="setting-select"></select>
+                </div>
               </div>
 
               <div class="modal-footer modal-footer-buttons">
@@ -647,6 +745,10 @@
                   <span class="stat-label">Ocena</span>
                   <span class="stat-number text-danger">2.0 (NDST)</span>
                 </div>
+              </div>
+
+              <div id="gameover-stipend-line" class="stipend-reward-line">
+                💰 +0 zł stypendium · saldo: 0 zł
               </div>
 
               <p class="result-message" id="gameover-quote">
@@ -731,6 +833,10 @@
                 </div>
               </div>
 
+              <div id="victory-stipend-line" class="stipend-reward-line stipend-reward-success">
+                💰 +0 zł stypendium · saldo: 0 zł
+              </div>
+
               <p class="result-message" id="victory-quote">
                 Egzaminator schował czerwony długopis do kieszeni. Jesteś dumą Akademii Leona Koźmińskiego!
               </p>
@@ -788,3 +894,5 @@
     <script type="module" src="js/game.js"></script>
   </body>
 </html>
+
+

@@ -462,6 +462,9 @@ export class SoundSystem {
       case 'countdown_start':
         this.playCountdownStart();
         break;
+      case 'whistle':
+        this.playWhistle();
+        break;
       default:
         console.warn(`[SoundSystem] Nieznany typ dźwięku: ${type}`);
     }
@@ -928,6 +931,44 @@ export class SoundSystem {
     gain.connect(this.getSFXDestination());
     osc.start(now);
     osc.stop(now + 0.12);
+  }
+
+  // 'whistle': Gwizdek ochroniarza („Nie biegamy po korytarzu!”)
+  playWhistle() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(2650, now);
+    osc.frequency.linearRampToValueAtTime(2850, now + 0.08);
+    osc.frequency.setValueAtTime(2720, now + 0.18);
+
+    // Szybki tryl kulki w gwizdku
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(38, now);
+    lfoGain.gain.setValueAtTime(140, now);
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.24, now + 0.03);
+    gain.gain.setValueAtTime(0.22, now + 0.24);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+
+    osc.connect(gain);
+    gain.connect(this.getSFXDestination());
+
+    osc.start(now);
+    lfo.start(now);
+    osc.stop(now + 0.37);
+    lfo.stop(now + 0.37);
   }
 }
 

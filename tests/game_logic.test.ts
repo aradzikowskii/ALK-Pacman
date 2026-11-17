@@ -738,8 +738,8 @@ test('Stage 3 Final Oral Exam: 30 ECTS starts final phase, 25s/20s timer, +15% e
   assert.ok(js.includes('this.startFinalPhase()'), 'Collecting 30 ECTS must call startFinalPhase');
   assert.ok(js.includes('this.finalPhase = true'), 'startFinalPhase must set finalPhase to true');
 
-  // 2. Czas finału: 25s w semestrze I/II, 20s w semestrze III
-  assert.ok(js.includes('this.currentSemester === 3 ? 20.0 : 25.0'), 'Final timer must be 20s for semester 3 and 25s otherwise');
+  // 2. Czas finału: 25s w semestrze I/II, 35s w semestrze III (walka z Komisją)
+  assert.ok(js.includes('this.currentSemester === 3 ? 35.0 : 25.0'), 'Final timer must be 35s for semester 3 and 25s otherwise');
 
   // 3. Baner na górze z odliczaniem i opisem
   assert.ok(js.includes('EGZAMIN USTNY!'), 'Event banner must display EGZAMIN USTNY!');
@@ -987,6 +987,162 @@ test('Modal accessibility and scrolling: no overflow hidden on cards, overflow-y
   assert.ok(html.includes('<div class="modal-card modal-start-card">\n              <!-- Animowane tło za kartą -->\n              <div class="start-bg-scroller" aria-hidden="true"></div>') && html.includes('class="modal-footer modal-footer-buttons"'), 'Start modal footer is direct child of card');
   assert.ok(html.includes('id="btn-start-game"'), 'Start modal must contain btn-start-game');
 });
+
+// Test 29: Waluta Stypendium, Sklep ALK (ulepszenia i stroje), wspólna funkcja rysowania postaci i ograniczenia CSS/HTML
+test('Stypendium wallet rewards, Sklep ALK upgrades & skins, shared student renderer, and non-sticky shop modal', async () => {
+  const fs = await import('node:fs/promises');
+  const html = await fs.readFile('index.html', 'utf-8');
+  const css = await fs.readFile('css/style.css', 'utf-8');
+  const js = await fs.readFile('js/game.js', 'utf-8');
+
+  // 1. Wzór naliczania stypendium
+  function calcStipend(score: number, isVictory: boolean, grade: string) {
+    let earned = Math.round(Math.max(0, score) / 10);
+    if (isVictory) {
+      earned += 50;
+      if (grade.startsWith('5.0')) earned += 50;
+    }
+    return earned;
+  }
+  assert.equal(calcStipend(1255, false, ''), 126);
+  assert.equal(calcStipend(4000, true, '4.5 (Dobry plus)'), 450);
+  assert.equal(calcStipend(7500, true, '5.0 (Bardzo dobry)'), 850);
+
+  // 2. Efekty ulepszeń
+  const upgrades = { shoes: 3, thermos: 2, stamina: 3, idcard: 1 };
+  assert.equal(Math.round(5.6 * (1 + 0.06 * upgrades.shoes) * 1000) / 1000, Math.round(5.6 * 1.18 * 1000) / 1000);
+  assert.equal(100 + 15 * upgrades.stamina, 145);
+  assert.equal(5.0 + upgrades.thermos * 1.0, 7.0);
+  assert.equal(upgrades.idcard >= 1, true);
+
+  // 3. Obecność kluczowych elementów HTML i zachowanie względnych ścieżek bez ?v=
+  assert.ok(html.includes('id="btn-open-shop"'), 'HTML must contain btn-open-shop');
+  assert.ok(html.includes('id="modal-shop"'), 'HTML must contain modal-shop');
+  assert.ok(html.includes('id="start-wallet-val"'), 'HTML must show Stypendium balance on start modal');
+  assert.ok(html.includes('id="shop-wallet-val"'), 'HTML must show Stypendium balance in shop modal');
+  assert.ok(html.includes('id="gameover-stipend-line"'), 'HTML must show Stypendium reward on game over');
+  assert.ok(html.includes('id="victory-stipend-line"'), 'HTML must show Stypendium reward on victory');
+  assert.ok(html.includes('href="css/style.css"'), 'CSS link must remain relative without ?v=');
+  assert.ok(html.includes('src="js/audio.js"'), 'audio.js script must remain relative without ?v=');
+  assert.ok(html.includes('src="js/game.js"'), 'game.js script must remain relative without ?v=');
+
+  // 4. Obecność kluczy localStorage, funkcji Sklepu i wspólnego renderowania stroju
+  assert.ok(js.includes("const WALLET_KEY = 'kozminski_wallet'"), 'game.js must use kozminski_wallet');
+  assert.ok(js.includes("const UPGRADES_KEY = 'kozminski_upgrades'"), 'game.js must use kozminski_upgrades');
+  assert.ok(js.includes("const SKINS_KEY = 'kozminski_skins'"), 'game.js must use kozminski_skins');
+  assert.ok(js.includes('drawStudentFigure('), 'game.js must share drawStudentFigure between game and shop');
+  assert.ok(js.includes('this.drawStudentFigure(ctx'), 'renderSkinPreview must use drawStudentFigure');
+  assert.ok(js.includes('this.drawStudentFigure(this.ctx'), 'drawPlayer must use drawStudentFigure');
+  assert.ok(js.includes('rewardGrantedThisGame'), 'game.js must guard stipend reward to run once per game');
+  assert.ok(js.includes('WeatherSystem'), 'WeatherSystem must remain intact');
+
+  // 5. Brak sticky nagłówków/stopek w nowym oknie sklepu i zachowanie istniejących bloków (Claude)
+  assert.ok(css.includes('/* === Pogoda na kampusie (Claude) === */'), 'Existing (Claude) CSS block must remain intact');
+  assert.ok(css.includes('.shop-modal-header {\n  position: static;'), 'Shop header must not be sticky');
+  assert.ok(css.includes('.shop-modal-footer {\n  position: static;'), 'Shop footer must not be sticky');
+});
+
+// Test 30: Nowe postacie i Boss – Pan z ochrony, Wizyta Rektora, Komisja Egzaminacyjna
+test('New characters & Boss: Pan z ochrony, Wizyta Rektora event, Komisja Egzaminacyjna Sem III boss, and modal-enemies cards', async () => {
+  const fs = await import('node:fs/promises');
+  const html = await fs.readFile('index.html', 'utf-8');
+  const css = await fs.readFile('css/style.css', 'utf-8');
+  const js = await fs.readFile('js/game.js', 'utf-8');
+  const audioJs = await fs.readFile('js/audio.js', 'utf-8');
+
+  // 1. Dźwięk gwizdka w audio.js
+  assert.ok(audioJs.includes("case 'whistle':"), 'audio.js must handle whistle sound type');
+  assert.ok(audioJs.includes('playWhistle()'), 'audio.js must define playWhistle');
+
+  // 2. Wymagane właściwości postaci i ich pola
+  assert.ok(js.includes('this.securityGuard'), 'game.js must define this.securityGuard');
+  assert.ok(js.includes('this.rector'), 'game.js must define this.rector');
+  assert.ok(js.includes('this.boss'), 'game.js must define this.boss');
+  for (const field of ['x:', 'y:', 'radius:', 'speed:', 'angle:', 'freezeTimer:', 'path:']) {
+    assert.ok(js.includes(field), `Characters must include field ${field}`);
+  }
+
+  // 3. Pan z ochrony: progi ECTS (15 / 5 / 0), latarka 90 deg / 150 px, gwizdek, spowolnienie i alarm egzaminatora
+  assert.ok(js.includes('const guardThreshold = this.currentSemester === 1 ? 15 : this.currentSemester === 2 ? 5 : 0;'), 'Guard thresholds must be 15/5/0');
+  assert.ok(js.includes('dist <= 150 && angleDiff <= Math.PI / 4'), 'Guard flashlight cone check must be 150px & 90 deg');
+  assert.ok(js.includes('„Nie biegamy po korytarzu!”'), 'Guard must show corridor running warning text');
+  assert.ok(js.includes("soundSystem.play('whistle')"), 'Guard must play whistle sound');
+  assert.ok(js.includes('guard.whistleCooldown = 6.0'), 'Guard whistle cooldown must be 6s');
+  assert.ok(js.includes('this.examiner.alarmTimer = 3.0'), 'Guard must alarm examiner for 3s');
+  assert.ok(js.includes('targetSpeed *= 1.25'), 'Alarmed examiner must be 25% faster');
+
+  // 4. Wizyta Rektora: 'blackout' zostaje jako events[0], 'rector' na końcu, pokłon < 160 px, uścisk dłoni +500 pkt
+  const eventMatch = js.match(/triggerRandomEvent\(\)\s*\{\s*const events = \[([\s\S]*?)\];/);
+  assert.ok(eventMatch, 'triggerRandomEvent must define events array');
+  const eventsBody = eventMatch![1];
+  const blackoutPos = eventsBody.indexOf("id: 'blackout'");
+  const rectorPos = eventsBody.indexOf("id: 'rector'");
+  assert.ok(blackoutPos > 0 && blackoutPos < eventsBody.indexOf("id: 'break'"), 'blackout must stay events[0]');
+  assert.ok(rectorPos > eventsBody.indexOf("id: 'quiz'"), 'rector event must be appended at the end of events');
+  assert.ok(js.includes('isBowingToRector(entity)'), 'Must define isBowingToRector helper');
+  assert.ok(js.includes('< 160'), 'Bowing distance must be < 160 px');
+  assert.ok(js.includes('this.score += 500'), 'Shaking rector hand must award +500 pkt');
+  assert.ok(js.includes('„Gratuluję wyników!”'), 'Rector must say congratulation message');
+  assert.ok(js.includes('🙇'), 'Bowing enemies must render bowing emoji');
+
+  // 5. Boss Komisja Egzaminacyjna: tylko Semestr III, 35s, BFS + adjustEnemyTarget, 3 pytania, 3 odpowiedzi i osiągnięcie
+  assert.ok(js.includes('this.weather.adjustEnemyTarget(boss, targetX, targetY)'), 'Boss must pass target through weather.adjustEnemyTarget');
+  assert.ok(js.includes('const spreadOffsets = [-0.25, 0, 0.25]'), 'Boss must fire 3 projectiles in a fan');
+  assert.ok(js.includes('this.bossAnswersCollected'), 'Must track collected answers in Sem III final');
+  assert.ok(js.includes("this.spawnItem('answer')"), 'Sem III final must spawn answer collectibles');
+  assert.ok(js.includes('Pogromca Komisji') && js.includes('⚖️'), 'Winning Sem III must unlock Pogromca Komisji achievement');
+
+  // 6. Karty w #modal-enemies oraz style na końcu css/style.css
+  assert.ok(html.includes('Pan z ochrony'), 'modal-enemies must list Pan z ochrony');
+  assert.ok(html.includes('Rektor (wydarzenie · sojusznik)'), 'modal-enemies must list Rektor as event/ally');
+  assert.ok(html.includes('Komisja Egzaminacyjna (boss finału Semestru III)'), 'modal-enemies must list Komisja Egzaminacyjna');
+  assert.ok(css.includes('.enemy-item-guard') && css.includes('.enemy-item-rector') && css.includes('.enemy-item-boss'), 'style.css must style new enemy cards');
+  assert.ok(html.includes('href="css/style.css"') && html.includes('src="js/audio.js"') && html.includes('src="js/game.js"'), 'Paths in index.html must stay relative');
+});
+
+// Test 31: Druga mapa – I piętro (Atrium): wybór mapy, układ sterowany danymi MAPS, korytarze >= 60 px, ikony w Hall of Fame
+test('Second map (I piętro – Atrium): map selector UI, data-driven MAPS geometry, >=60px corridors, and Hall of Fame icons', async () => {
+  const fs = await import('node:fs/promises');
+  const html = await fs.readFile('index.html', 'utf-8');
+  const css = await fs.readFile('css/style.css', 'utf-8');
+  const js = await fs.readFile('js/game.js', 'utf-8');
+
+  // 1. Wybór mapy w HTML pod wyborem semestru
+  const semIdx = html.indexOf('class="semester-selector"');
+  const mapIdx = html.indexOf('class="map-selector"');
+  assert.ok(semIdx > 0 && mapIdx > semIdx, 'map-selector must appear right below semester-selector');
+  assert.ok(html.includes('data-map="parter"') && html.includes('🌿 Parter (Patio)'), 'HTML must include Parter (Patio) tab');
+  assert.ok(html.includes('data-map="atrium"') && html.includes('🏢 I piętro (Atrium)'), 'HTML must include I piętro (Atrium) tab');
+
+  // 2. Relatywne ścieżki i zachowanie bloków CSS (Claude) oraz WeatherSystem i blackout events[0]
+  assert.ok(html.includes('href="css/style.css"') && html.includes('src="js/audio.js"') && html.includes('src="js/game.js"'), 'Relative paths must stay intact');
+  assert.ok(css.includes('/* === Pogoda na kampusie (Claude) === */'), 'Existing (Claude) CSS block must stay intact');
+  assert.ok(css.includes('.map-selector') && css.includes('.record-map-icon'), 'style.css must define .map-selector and .record-map-icon');
+  assert.ok(js.includes("const MAP_KEY = 'kozminski_map'"), 'game.js must persist map under kozminski_map');
+  assert.ok(js.includes('const MAPS = {'), 'game.js must define data-driven MAPS');
+
+  // 3. Identyczne ID sal na obu mapach i wymagane nazwy na Atrium
+  for (const id of ["id: 'aula'", "id: 'dean'", "id: 'library'", "id: 'lab'"]) {
+    assert.ok(js.includes(id), `MAPS must define room ${id}`);
+  }
+  assert.ok(js.includes('name: "Aula B"'), 'Atrium must rename aula to Aula B');
+  assert.ok(js.includes('name: "Czytelnia"'), 'Atrium must rename library to Czytelnia');
+  assert.ok(js.includes('name: "Sala komputerowa 2"'), 'Atrium must rename lab to Sala komputerowa 2');
+  assert.ok(js.includes('isAtrium: true'), 'Atrium patio must have isAtrium: true');
+  assert.ok(js.includes("kind: 'atrium'"), 'Atrium balustrade must be included in walls with kind: atrium');
+  assert.ok(js.includes("kind: 'ficus'") && js.includes('drawFicusPot'), 'Atrium must render 4 ficus pots');
+  assert.ok(js.includes('▲ SCHODY ▼') && js.includes('☕ KAWA'), 'Atrium must include escalator & coffee machine decorations');
+
+  // 4. Hall of Fame zapisuje mapę i wyświetla ikonę mapy obok wyniku
+  assert.ok(js.includes('bestScoreMap') && js.includes('record-map-icon'), 'Hall of Fame must save and render map icon next to score');
+
+  // 5. 'blackout' zostaje pierwszym elementem tablicy events w triggerRandomEvent
+  const eventMatch = js.match(/triggerRandomEvent\(\)\s*\{\s*const events = \[([\s\S]*?)\];/);
+  assert.ok(eventMatch && eventMatch[1].trimStart().startsWith("{\n        id: 'blackout'"), 'blackout must stay events[0]');
+});
+
+
+
 
 
 

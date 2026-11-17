@@ -130,6 +130,46 @@ Premia mnoży punkty za każde zebrane ECTS i Złote ECTS, więc trudniejsza pog
 
 ---
 
+## 🌙 Pora dnia i kalendarz akademicki
+
+- **Pora dnia na żywo:** gra sprawdza, czy przy ALK jest teraz dzień czy noc (te same dane co pogoda). Na ekranie startowym i w ⚙️ Ustawieniach można też wybrać „☀️ Dzień” albo „🌙 Noc”.
+- **Noc:** kampus jest ciemny, świecą tylko latarnie, lampy w salach i ekran telefonu studenta. Wykładowcy chodzą z latarkami: z bliska widzą Cię zawsze, ale dalej tylko w snopie światła. Gdy Cię nie widzą, idą tam, gdzie widzieli Cię ostatnio. Premia **×1,1** (łączy się z premią pogodową).
+- **Kalendarz:** status w pasku gry i opis na ekranie startowym zależą od daty: semestr zimowy, sesja zimowa, semestr letni, sesja letnia, wakacje, sesja poprawkowa, przerwa świąteczna. W grudniu na Patio stoi choinka z lampkami, a w okolicach Halloween pojawiają się dynie i pajęczyny. Żeby podejrzeć inną datę, dopisz do adresu gry np. `?data=2026-12-24`.
+
+---
+
+## 🛒 Sklep ALK i stypendium
+
+Po każdej grze dostajesz **stypendium**: wynik ÷ 10 zł, za wygraną +50 zł, a za ocenę 5.0 kolejne +50 zł. Wydasz je w **🛒 Sklepie ALK** (przycisk na ekranie startowym).
+
+| Ulepszenie | Efekt | Ceny |
+|---|---|---|
+| 👟 Lepsze buty | Sprint +6% na poziom (3 poziomy) | 150 / 300 / 500 zł |
+| ☕ Termos | Turbo kawa działa +1 s dłużej na poziom (3 poziomy) | 120 / 250 / 400 zł |
+| 💪 Kondycja | Maksymalna stamina +15 na poziom (3 poziomy) | 150 / 300 / 500 zł |
+| 🪪 Zapasowa legitymacja | Każda gra zaczyna się z tarczą | 600 zł |
+
+**Stroje:** Klasyczny student (za darmo), 🧥 Bluza ALK (200 zł), 🏃 Strój sportowy AZS (250 zł), 🎄 Świąteczny sweter (300 zł) i 🎓 Toga absolwenta (odblokowuje się po zdaniu Semestru III).
+
+---
+
+## 👮 Nowe postacie i boss
+
+- **👮 Pan z ochrony** (Semestr I od 15 ECTS, Semestr II od 5 ECTS, Semestr III od startu): patroluje korytarze z latarką. Jeśli sprintujesz w jego snopie światła albo tuż obok niego, gwiżdże: zwalniasz na 1,5 s, a egzaminator przez 3 s jest o 25% szybszy. Sam Cię nie łapie.
+- **🎩 Wizyta Rektora** (losowe wydarzenie): wykładowcy w pobliżu Rektora zatrzymują się i kłaniają. Uściśnij mu dłoń, a dostaniesz **+500 pkt**.
+- **⚖️ Komisja Egzaminacyjna** (boss finału Semestru III, 35 s): goni Cię i zadaje pytania ❓ (trafienie ogłusza na 0,8 s). Zbierz 3 📄 Odpowiedzi, żeby odblokować Dziekanat. Za wygraną dostajesz osiągnięcie „Pogromca Komisji”.
+
+---
+
+## 🗺️ Mapy
+
+- **🌿 Parter (Patio):** klasyczny układ z zielonym Patio i krzakami.
+- **🏢 I piętro (Atrium):** szklana balustrada wokół atrium z widokiem na Patio, Aula B, Czytelnia (strefa ciszy), Sala komputerowa 2 i Dziekanat na dole planszy. Kryjówki to donice z fikusami.
+
+Mapę wybierasz na ekranie startowym, pod wyborem semestru.
+
+---
+
 ## 🎓 Semestry, Oceny & Osiągnięcia
 
 ### System Semestrów:
